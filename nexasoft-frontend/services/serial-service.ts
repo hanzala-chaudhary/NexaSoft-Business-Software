@@ -21,7 +21,7 @@ export async function lookupSerial(query: string): Promise<SerialLookupResult> {
 
   if (!exact) return { found: false, query: q };
 
-  return { found: true, item: exact, history: buildSerialHistory(exact) };
+  return { found: true, item: exact, history: buildSerialHistory(exact), query: q };
 }
 
 export async function searchSerials(query: string, limit = 10): Promise<SerializedProduct[]> {
