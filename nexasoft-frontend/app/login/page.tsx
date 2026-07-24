@@ -1,20 +1,20 @@
 "use client";
 import { useState } from "react";
 
-export default function Login() {
+export default function LoginPage() {
   const [pin, setPin] = useState("");
   const [error, setError] = useState("");
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
     
-    // Naya Password set kar diya hai
+    // Exact password jo client ko dena hai
     if (pin === "nexasoft1234") {
-      // Cookie set karna
+      // Cookie set karna taake middleware pass ho
       document.cookie = "isLoggedIn=true; path=/; max-age=86400";
       
-      // FIX: Hard refresh taake Next.js middleware ko fresh cookie mil jaye aur wapas na phenke
-      window.location.href = "/";
+      // Direct dashboard par redirect
+      window.location.href = "/dashboard";
     } else {
       setError("Incorrect Password. Dobara koshish karein.");
     }
@@ -32,7 +32,10 @@ export default function Login() {
             <input
               type="password"
               value={pin}
-              onChange={(e) => setPin(e.target.value)}
+              onChange={(e) => {
+                setPin(e.target.value);
+                setError(""); // Type karte hi error hide ho jayega
+              }}
               className="w-full rounded-xl border border-slate-300 p-3 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-500/20"
               placeholder="Enter Password"
             />
