@@ -192,10 +192,10 @@ export default function Sidebar() {
         {!collapsed && (
           <div className="min-w-0">
             <p className="truncate text-[13px] font-semibold leading-none text-slate-100 tracking-tight">
-              NexaSoft
+              Tayyab & Hassan
             </p>
             <p className="mt-0.5 truncate text-[10px] font-medium uppercase tracking-widest text-indigo-400">
-              Business Software
+              Traders
             </p>
           </div>
         )}
@@ -264,7 +264,7 @@ export default function Sidebar() {
           {/* Avatar */}
           <div className="relative shrink-0">
             <div className="flex h-7 w-7 items-center justify-center rounded-full bg-gradient-to-br from-indigo-500 to-violet-600 text-xs font-bold text-white shadow-sm">
-              H
+              T
             </div>
             <span className="absolute bottom-0 right-0 h-2 w-2 rounded-full border-2 border-[#0f1117] bg-emerald-400" />
           </div>
@@ -272,7 +272,7 @@ export default function Sidebar() {
           {!collapsed && (
             <div className="min-w-0 flex-1 text-left">
               <p className="truncate text-xs font-semibold text-slate-200">
-                Hanzala
+                Tayyab & Hassan
               </p>
               <p className="truncate text-[10px] text-slate-500">
                 Administrator

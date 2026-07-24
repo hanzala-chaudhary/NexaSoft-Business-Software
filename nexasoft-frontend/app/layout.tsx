@@ -14,8 +14,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "NexaSoft Business Software",
-  description: "Enterprise POS & Inventory System",
+  title: "Tayyab & Hassan Traders - POS System",
+  description: "Professional POS and Inventory Management System",
 };
 
 export default function RootLayout({
