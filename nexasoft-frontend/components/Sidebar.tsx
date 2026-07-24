@@ -165,13 +165,13 @@ export default function Sidebar() {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState<boolean>(false);
 
-  // Agar user Login page (/) par hai, toh sidebar hide kar do
-  if (pathname === "/") return null;
+  // Agar user Login page (/login) par hai, toh sidebar hide kar do
+  if (pathname === "/login") return null;
 
   return (
     <aside
       className={`
-        relative flex h-screen flex-col shrink-0
+        hidden md:flex relative h-screen flex-col shrink-0
         bg-[#0f1117] border-r border-white/[0.06]
         transition-all duration-300 ease-in-out z-50
         ${collapsed ? "w-[68px]" : "w-[240px]"}
@@ -305,9 +305,10 @@ export default function Sidebar() {
           `}
           title={collapsed ? "Logout" : undefined}
           onClick={() => {
-            // Logout logic for demo (redirects back to login)
+            // Cookie remove karna aur login page par bhej dena
             if (typeof window !== 'undefined') {
-              window.location.href = '/';
+              document.cookie = "isLoggedIn=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
+              window.location.href = '/login';
             }
           }}
         >
