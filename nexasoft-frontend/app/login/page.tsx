@@ -1,19 +1,22 @@
 "use client";
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 
 export default function Login() {
   const [pin, setPin] = useState("");
   const [error, setError] = useState("");
-  const router = useRouter();
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
-    if (pin === "1234") {
+    
+    // Naya Password set kar diya hai
+    if (pin === "nexasoft1234") {
+      // Cookie set karna
       document.cookie = "isLoggedIn=true; path=/; max-age=86400";
-      router.push("/");
+      
+      // FIX: Hard refresh taake Next.js middleware ko fresh cookie mil jaye aur wapas na phenke
+      window.location.href = "/";
     } else {
-      setError("Ghalat PIN. Dobara koshish karein.");
+      setError("Incorrect Password. Dobara koshish karein.");
     }
   };
 
@@ -25,13 +28,13 @@ export default function Login() {
         </h1>
         <form onSubmit={handleLogin} className="space-y-4">
           <div>
-            <label className="mb-2 block text-sm font-medium text-slate-700">Login PIN</label>
+            <label className="mb-2 block text-sm font-medium text-slate-700">Login Password</label>
             <input
               type="password"
               value={pin}
               onChange={(e) => setPin(e.target.value)}
               className="w-full rounded-xl border border-slate-300 p-3 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-500/20"
-              placeholder="Enter PIN (1234)"
+              placeholder="Enter Password"
             />
           </div>
           {error && <p className="text-sm text-red-500">{error}</p>}
