@@ -10,7 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, Dialog
 import { Label } from "@/components/ui/label";
 import { Search, Plus, Building2, Trash2, Loader2, Phone, Mail } from "lucide-react";
 
-const API_URL = "https://nexa-soft-business-software--nexasoft.replit.app/suppliers";
+const API_URL = "https://nexa-soft-business-software--nexasoft.replit.app/api/suppliers";
 
 export default function SuppliersPage() {
   const [suppliers, setSuppliers] = useState<any[]>([]);

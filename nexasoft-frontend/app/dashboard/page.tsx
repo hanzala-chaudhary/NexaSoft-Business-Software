@@ -72,7 +72,7 @@ export default function DashboardPage() {
   useEffect(() => {
     const fetchDashboard = async () => {
       try {
-        const res = await fetch("https://nexa-soft-business-software--nexasoft.replit.app/dashboard/summary");
+        const res = await fetch("https://nexa-soft-business-software--nexasoft.replit.app/api/dashboard/summary");
         if (res.ok) {
           setData(await res.json());
         }

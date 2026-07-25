@@ -10,7 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, Dialog
 import { Label } from "@/components/ui/label";
 import { Search, Plus, Package, Trash2, Loader2 } from "lucide-react";
 
-const API_URL = "https://nexa-soft-business-software--nexasoft.replit.app/products";
+const API_URL = "https://nexa-soft-business-software--nexasoft.replit.app/api/products";
 
 export default function ProductsPage() {
   const [products, setProducts] = useState<any[]>([]);

@@ -38,7 +38,7 @@ export default function POSPage() {
   // ─── Fetch Products (real backend — unchanged) ───
   const fetchProducts = async () => {
     try {
-      const res = await fetch("https://nexa-soft-business-software--nexasoft.replit.app/products");
+      const res = await fetch("https://nexa-soft-business-software--nexasoft.replit.app/api/products");
       setProducts(await res.json());
     } catch (error) {
       console.error("Error fetching products:", error);
@@ -113,7 +113,7 @@ export default function POSPage() {
         serialNumbers: item.serialNumbersText.split('\n').map((s: string) => s.trim()).filter((s: string) => s !== "")
       }));
 
-      const res = await fetch("https://nexa-soft-business-software--nexasoft.replit.app/sales", {
+      const res = await fetch("https://nexa-soft-business-software--nexasoft.replit.app/api/sales", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
