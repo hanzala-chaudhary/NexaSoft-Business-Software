@@ -8,7 +8,7 @@ import {
   PackageX,
   AlertTriangle,
   Filter,
-  Loader2, // Loader add kiya hai jab tak API se data aaye
+  Loader2, 
 } from "lucide-react";
 
 // ---------- Types ----------
@@ -57,10 +57,8 @@ export default function Inventory() {
   useEffect(() => {
     const fetchInventory = async () => {
       try {
-        // NEXT_PUBLIC_API_URL Vercel/Localhost se aayega
-        const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000"; 
+        const apiUrl = process.env.NEXT_PUBLIC_API_URL || "https://nexa-soft-business-software--nexasoft.replit.app"; 
         
-        // Note: Yahan '/products' ki jagah agar aapke backend ka route '/inventory' hai toh wo likhiye ga
         const response = await fetch(`${apiUrl}/products`); 
         
         if (!response.ok) {
@@ -69,7 +67,6 @@ export default function Inventory() {
 
         const data = await response.json();
         
-        // Backend ka data state mein save kar rahe hain
         setAllItems(data);
       } catch (err: any) {
         setError(err.message);
@@ -81,7 +78,6 @@ export default function Inventory() {
     fetchInventory();
   }, []);
 
-  // Database se aane wali unique Categories aur Brands nikalne ke liye
   const uniqueCategories = useMemo(() => {
     const cats = new Set(allItems.map((item) => item.category).filter(Boolean));
     return Array.from(cats);

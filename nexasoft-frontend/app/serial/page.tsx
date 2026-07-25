@@ -22,7 +22,7 @@ export default function SerialTrackerPage() {
     setSerialData(null);
 
     try {
-      const res = await fetch(`http://localhost:4000/serial/${searchQuery}`);
+      const res = await fetch(`https://nexa-soft-business-software--nexasoft.replit.app/serial/${searchQuery}`);
       if (!res.ok) {
         throw new Error("Yeh serial number database mein nahi mila!");
       }
