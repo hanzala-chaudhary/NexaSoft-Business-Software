@@ -28,9 +28,9 @@ export default function PurchasesPage() {
     try {
       setIsLoading(true);
       const [purchasesRes, suppliersRes, productsRes] = await Promise.all([
-        fetch("http://localhost:4000/purchases"),
-        fetch("http://localhost:4000/suppliers"),
-        fetch("http://localhost:4000/products"),
+        fetch("https://nexa-soft-business-software--nexasoft.replit.app/purchases"),
+        fetch("https://nexa-soft-business-software--nexasoft.replit.app/suppliers"),
+        fetch("https://nexa-soft-business-software--nexasoft.replit.app/products"),
       ]);
 
       setPurchases(await purchasesRes.json());
@@ -115,7 +115,7 @@ export default function PurchasesPage() {
       });
 
       // 3. Save to Database
-      const res = await fetch("http://localhost:4000/purchases", {
+      const res = await fetch("https://nexa-soft-business-software--nexasoft.replit.app/purchases", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
