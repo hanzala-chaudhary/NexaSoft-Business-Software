@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 
-export default function HomePage() {
-  // Root (/) par aane wale ko seedha dashboard bhej dein
+export default function RootPage() {
+  // Root (/) par aane wale ko automatically dashboard par bhej dega
   redirect("/dashboard");
 }
