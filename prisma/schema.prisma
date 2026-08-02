@@ -31,6 +31,7 @@ model User {
   avatar                              String?
   status                              user_status             @default(ACTIVE)
   is_super_admin                      Boolean                 @default(false)
+  role                                String                  @default("CASHIER") // Naya Role system add kiya gaya
   email_verified                      Boolean                 @default(false)
   failed_login_attempts               Int                     @default(0)
   account_locked_until                DateTime?               @db.Timestamptz(6)
@@ -49,6 +50,7 @@ model User {
   two_factor_auth                     two_factor_auth?
   user_roles                          user_roles[]
   user_sessions                       user_sessions[]
+  sales_made                          Sale[]                  // Reverse relation
   users_users_created_byTousers       User?                   @relation("users_created_byTousers", fields: [created_by], references: [id])
   other_users_users_created_byTousers User[]                  @relation("users_created_byTousers")
   users_users_deleted_byTousers       User?                   @relation("users_deleted_byTousers", fields: [deleted_by], references: [id])
@@ -64,28 +66,28 @@ model User {
 }
 
 model Category {
-  id               String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  tenant_id        String?    @db.Uuid
-  location_id      String?    @db.Uuid
-  parent_id        String?    @db.Uuid
-  name             String     @db.VarChar(255)
-  slug             String     @unique @db.VarChar(255)
+  id               String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenant_id        String?      @db.Uuid
+  location_id      String?      @db.Uuid
+  parent_id        String?      @db.Uuid
+  name             String       @db.VarChar(255)
+  slug             String       @unique @db.VarChar(255)
   description      String?
-  image            String?    @db.VarChar(512)
-  display_order    Int        @default(0)
+  image            String?      @db.VarChar(512)
+  display_order    Int          @default(0)
   status           RecordStatus @default(ACTIVE)
-  seo_title        String?    @db.VarChar(255)
+  seo_title        String?      @db.VarChar(255)
   seo_description  String?
-  seo_keywords     String?    @db.VarChar(255)
-  sync_version     Int        @default(1)
+  seo_keywords     String?      @db.VarChar(255)
+  sync_version     Int          @default(1)
   sync_status      sync_status  @default(SYNCED)
-  created_by       String?    @db.Uuid
-  updated_by       String?    @db.Uuid
-  createdAt        DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt        DateTime   @updatedAt @map("updated_at") @db.Timestamptz(6)
-  deleted_at       DateTime?  @db.Timestamptz(6)
-  categories       Category?  @relation("categoriesTocategories", fields: [parent_id], references: [id])
-  other_categories Category[] @relation("categoriesTocategories")
+  created_by       String?      @db.Uuid
+  updated_by       String?      @db.Uuid
+  createdAt        DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime     @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deleted_at       DateTime?    @db.Timestamptz(6)
+  categories       Category?    @relation("categoriesTocategories", fields: [parent_id], references: [id])
+  other_categories Category[]   @relation("categoriesTocategories")
   products         Product[]
 
   @@index([parent_id])
@@ -205,8 +207,6 @@ model Product {
   unit                   Unit?                    @relation(fields: [unitId], references: [id], onDelete: Restrict)
   warranty_profiles      warranty_profiles?       @relation(fields: [warranty_profile_id], references: [id])
   serialized_products    serialized_products[]
-  
-  // Naye Relations
   purchase_items         PurchaseItem[]
   sale_items             SaleItem[]
   inventory_transactions InventoryTransaction[]
@@ -469,6 +469,31 @@ model Customer {
   @@map("customers")
 }
 
+model Sale {
+  id                  String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenant_id           String?               @db.Uuid
+  invoice_number      String                @unique @db.VarChar(100)
+  customer_id         String?               @db.Uuid
+  salesman_id         String?               @db.Uuid  
+  total_amount        Decimal               @default(0.00) @db.Decimal(15, 4)
+  discount            Decimal               @default(0.00) @db.Decimal(15, 4)
+  payment_status      String                @db.VarChar(50)
+  status              RecordStatus          @default(ACTIVE)
+  sale_date           DateTime              @default(now()) @db.Timestamptz(6)
+  created_at          DateTime              @default(now()) @db.Timestamptz(6)
+  updated_at          DateTime              @updatedAt @db.Timestamptz(6)
+  deleted_at          DateTime?             @db.Timestamptz(6)
+  customer            Customer?             @relation(fields: [customer_id], references: [id])
+  salesman            User?                 @relation(fields: [salesman_id], references: [id]) 
+  items               SaleItem[]
+  serialized_products serialized_products[]
+
+  @@index([tenant_id])
+  @@index([customer_id])
+  @@index([salesman_id])                                       
+  @@map("sales")
+}
+
 model Supplier {
   id                  String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tenant_id           String?               @db.Uuid
@@ -525,28 +550,6 @@ model PurchaseItem {
   @@index([purchase_id])
   @@index([product_id])
   @@map("purchase_items")
-}
-
-model Sale {
-  id                  String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  tenant_id           String?               @db.Uuid
-  invoice_number      String                @unique @db.VarChar(100)
-  customer_id         String?               @db.Uuid
-  total_amount        Decimal               @default(0.00) @db.Decimal(15, 4)
-  discount            Decimal               @default(0.00) @db.Decimal(15, 4)
-  payment_status      String                @db.VarChar(50) // PAID, PARTIAL, UNPAID
-  status              RecordStatus          @default(ACTIVE)
-  sale_date           DateTime              @default(now()) @db.Timestamptz(6)
-  created_at          DateTime              @default(now()) @db.Timestamptz(6)
-  updated_at          DateTime              @updatedAt @db.Timestamptz(6)
-  deleted_at          DateTime?             @db.Timestamptz(6)
-  customer            Customer?             @relation(fields: [customer_id], references: [id])
-  items               SaleItem[]
-  serialized_products serialized_products[]
-
-  @@index([tenant_id])
-  @@index([customer_id])
-  @@map("sales")
 }
 
 model SaleItem {
@@ -609,13 +612,13 @@ model serialized_products {
   deleted_at           DateTime?    @db.Timestamptz(6)
 
   // Naye aur Purane Relations Linked
-  products             Product       @relation(fields: [product_id], references: [id])
-  purchase             Purchase?     @relation(fields: [purchase_invoice_id], references: [id])
-  purchase_item        PurchaseItem? @relation(fields: [purchase_item_id], references: [id])
-  supplier             Supplier?     @relation(fields: [supplier_id], references: [id])
-  sale                 Sale?         @relation(fields: [sale_invoice_id], references: [id])
-  sale_item            SaleItem?     @relation(fields: [sale_item_id], references: [id])
-  customer             Customer?     @relation(fields: [customer_id], references: [id])
+  products      Product       @relation(fields: [product_id], references: [id])
+  purchase      Purchase?     @relation(fields: [purchase_invoice_id], references: [id])
+  purchase_item PurchaseItem? @relation(fields: [purchase_item_id], references: [id])
+  supplier      Supplier?     @relation(fields: [supplier_id], references: [id])
+  sale          Sale?         @relation(fields: [sale_invoice_id], references: [id])
+  sale_item     SaleItem?     @relation(fields: [sale_item_id], references: [id])
+  customer      Customer?     @relation(fields: [customer_id], references: [id])
 
   @@unique([tenant_id, internal_tracking_no])
   @@unique([tenant_id, serial_number])
@@ -705,6 +708,30 @@ model warranty_profiles {
   products           Product[]
 
   @@index([tenant_id])
+}
+
+model Expense {
+  id          String   @id @default(uuid())
+  title       String
+  amount      Float
+  category    String   @default("General")
+  description String?
+  date        DateTime @default(now())
+  created_at  DateTime @default(now())
+}
+
+model Shift {
+  id            String    @id @default(uuid())
+  opened_by     String    @default("Admin")
+  opening_time  DateTime  @default(now())
+  opening_cash  Float     @default(0)
+  
+  closing_time  DateTime?
+  closing_cash  Float?    
+  expected_cash Float?    
+  
+  status        String    @default("OPEN") // "OPEN" ya "CLOSED"
+  notes         String?
 }
 
 enum RecordStatus {

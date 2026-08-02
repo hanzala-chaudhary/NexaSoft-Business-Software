@@ -8,19 +8,16 @@ import {
   PackageX,
   AlertTriangle,
   Filter,
-  Loader2, 
+  Loader2,
 } from "lucide-react";
-
-// ---------- Types ----------
 
 type StockStatus = "In Stock" | "Low Stock" | "Out of Stock";
 
 interface InventoryItem {
   id: string;
-  product: string; 
+  product: string;
   sku: string;
   barcode: string;
-  brand: string;
   category: string;
   currentStock: number;
   reserved: number;
@@ -40,34 +37,36 @@ const statusStyles: Record<StockStatus, string> = {
   "Out of Stock": "bg-rose-50 text-rose-700 ring-rose-600/20",
 };
 
-// ---------- Main Component ----------
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
 
 export default function Inventory() {
-  // Data States
   const [allItems, setAllItems] = useState<InventoryItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");
 
-  // Filter States
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState("All");
-  const [brand, setBrand] = useState("All");
 
-  // ---------- API SE DATA FETCH KARNA ----------
   useEffect(() => {
     const fetchInventory = async () => {
       try {
-        const apiUrl = process.env.NEXT_PUBLIC_API_URL || "https://nexa-soft-business-software--nexasoft.replit.app"; 
-        
-        const response = await fetch(`${apiUrl}/products`); 
-        
-        if (!response.ok) {
-          throw new Error("Failed to fetch data from database");
-        }
+        const response = await fetch(`${API_URL}/products`);
+        if (!response.ok) throw new Error("Failed to fetch data from database");
 
-        const data = await response.json();
-        
-        setAllItems(data);
+        const raw = await response.json();
+
+        // Backend ke field names ko frontend ke expected shape mein convert karo
+        const normalized: InventoryItem[] = raw.map((p: any) => ({
+          id: p.id,
+          product: p.name || "",
+          sku: p.sku || "",
+          barcode: p.master_barcode || "-",
+          category: p.category?.name || "Uncategorized",
+          currentStock: Number(p.opening_stock) || 0,
+          reserved: 0, // Reserved-stock tracking abhi implement nahi hui (future feature)
+        }));
+
+        setAllItems(normalized);
       } catch (err: any) {
         setError(err.message);
       } finally {
@@ -83,11 +82,6 @@ export default function Inventory() {
     return Array.from(cats);
   }, [allItems]);
 
-  const uniqueBrands = useMemo(() => {
-    const brnds = new Set(allItems.map((item) => item.brand).filter(Boolean));
-    return Array.from(brnds);
-  }, [allItems]);
-
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     return allItems.filter((item) => {
@@ -97,10 +91,9 @@ export default function Inventory() {
         item.sku?.toLowerCase().includes(q) ||
         item.barcode?.toLowerCase().includes(q);
       const matchesCategory = category === "All" || item.category === category;
-      const matchesBrand = brand === "All" || item.brand === brand;
-      return matchesQuery && matchesCategory && matchesBrand;
+      return matchesQuery && matchesCategory;
     });
-  }, [query, category, brand, allItems]);
+  }, [query, category, allItems]);
 
   const summary = useMemo(() => {
     const totalStock = allItems.reduce((sum, i) => sum + (i.currentStock || 0), 0);
@@ -144,14 +137,11 @@ export default function Inventory() {
   return (
     <div className="min-h-screen w-full bg-slate-50 p-4 text-slate-800 sm:p-6">
       <div className="mx-auto max-w-7xl space-y-5">
-        
-        {/* Header */}
         <div className="flex flex-col gap-1">
           <h1 className="text-2xl font-bold tracking-tight text-slate-900">Inventory</h1>
           <p className="text-sm text-slate-500">Track stock levels across your catalog</p>
         </div>
 
-        {/* Loading & Error States */}
         {isLoading && (
           <div className="flex w-full items-center justify-center rounded-2xl border border-slate-200 bg-white p-10 shadow-sm">
             <Loader2 className="h-8 w-8 animate-spin text-teal-600" />
@@ -167,7 +157,6 @@ export default function Inventory() {
 
         {!isLoading && !error && (
           <>
-            {/* Stock Summary Cards */}
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
               {summaryCards.map((card) => {
                 const Icon = card.icon;
@@ -188,7 +177,6 @@ export default function Inventory() {
               })}
             </div>
 
-            {/* Search + Filters */}
             <div className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm lg:flex-row lg:items-center lg:justify-between">
               <div className="relative w-full lg:max-w-xs">
                 <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
@@ -206,8 +194,7 @@ export default function Inventory() {
                   <Filter className="h-4 w-4" />
                   <span className="text-xs font-medium uppercase tracking-wide">Filters</span>
                 </div>
-                
-                {/* Dynamic Categories Dropdown */}
+
                 <select
                   value={category}
                   onChange={(e) => setCategory(e.target.value)}
@@ -218,22 +205,9 @@ export default function Inventory() {
                     <option key={c} value={c}>{c}</option>
                   ))}
                 </select>
-                
-                {/* Dynamic Brands Dropdown */}
-                <select
-                  value={brand}
-                  onChange={(e) => setBrand(e.target.value)}
-                  className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-700 outline-none transition-colors focus:border-teal-500 focus:bg-white focus:ring-2 focus:ring-teal-500/20"
-                >
-                  <option value="All">All Brands</option>
-                  {uniqueBrands.map((b) => (
-                    <option key={b} value={b}>{b}</option>
-                  ))}
-                </select>
               </div>
             </div>
 
-            {/* Table */}
             <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
               <div className="overflow-x-auto">
                 <table className="w-full min-w-[860px] text-left text-sm">
@@ -242,16 +216,14 @@ export default function Inventory() {
                       <th className="px-4 py-3 font-medium">Product</th>
                       <th className="px-4 py-3 font-medium">SKU</th>
                       <th className="px-4 py-3 font-medium">Barcode</th>
+                      <th className="px-4 py-3 font-medium">Category</th>
                       <th className="px-4 py-3 font-medium">Current Stock</th>
-                      <th className="px-4 py-3 font-medium">Reserved</th>
-                      <th className="px-4 py-3 font-medium">Available</th>
                       <th className="px-4 py-3 font-medium">Status</th>
                     </tr>
                   </thead>
                   <tbody>
                     {filtered.map((item) => {
                       const status = getStatus(item.currentStock || 0);
-                      const available = (item.currentStock || 0) - (item.reserved || 0);
                       return (
                         <tr
                           key={item.id}
@@ -262,11 +234,8 @@ export default function Inventory() {
                           </td>
                           <td className="px-4 py-3 text-slate-500 whitespace-nowrap">{item.sku}</td>
                           <td className="px-4 py-3 text-slate-500 whitespace-nowrap">{item.barcode}</td>
+                          <td className="px-4 py-3 text-slate-500 whitespace-nowrap">{item.category}</td>
                           <td className="px-4 py-3 text-slate-600 whitespace-nowrap">{item.currentStock || 0}</td>
-                          <td className="px-4 py-3 text-slate-600 whitespace-nowrap">{item.reserved || 0}</td>
-                          <td className="px-4 py-3 font-medium text-slate-800 whitespace-nowrap">
-                            {available}
-                          </td>
                           <td className="px-4 py-3 whitespace-nowrap">
                             <span
                               className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ring-1 ring-inset ${statusStyles[status]}`}
@@ -278,12 +247,11 @@ export default function Inventory() {
                       );
                     })}
 
-                    {/* Agar Database Khali Hai */}
                     {filtered.length === 0 && (
                       <tr>
-                        <td colSpan={7} className="px-4 py-10 text-center text-sm text-slate-400">
-                          {allItems.length === 0 
-                            ? "Godam bilkul khali hai. Koi product add nahi ki gayi." 
+                        <td colSpan={6} className="px-4 py-10 text-center text-sm text-slate-400">
+                          {allItems.length === 0
+                            ? "Godam bilkul khali hai. Koi product add nahi ki gayi."
                             : "No inventory items match your search or filters."}
                         </td>
                       </tr>

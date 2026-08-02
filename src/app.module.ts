@@ -1,41 +1,37 @@
 import { Module } from '@nestjs/common';
+import { ConfigModule } from '@nestjs/config';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
-import { PrismaService } from './prisma/prisma.service';
-
-import { ProductsController } from './products/products.controller';
-import { ProductsService } from './products/products.service';
-import { SuppliersController } from './suppliers/suppliers.controller';
-import { SuppliersService } from './suppliers/suppliers.service';
-import { PurchasesController } from './purchases/purchases.controller';
-import { PurchasesService } from './purchases/purchases.service';
-import { SalesController } from './sales/sales.controller';
-import { SalesService } from './sales/sales.service';
-import { SerialController } from './serial/serial.controller';
-import { SerialService } from './serial/serial.service';
-import { DashboardController } from './dashboard/dashboard.controller';
-import { DashboardService } from './dashboard/dashboard.service';
+import { ExpensesModule } from './expenses/expenses.module';
+import { PrismaModule } from './prisma/prisma.module';
+import { CategoriesModule } from './categories/categories.module';
+import { ProductsModule } from './products/products.module';
+import { SuppliersModule } from './suppliers/suppliers.module';
+import { PurchasesModule } from './purchases/purchases.module';
+import { SalesModule } from './sales/sales.module';
+import { SerialModule } from './serial/serial.module';
+import { DashboardModule } from './dashboard/dashboard.module';
+import { BrandsModule } from './brands/brands.module';
+import { CustomersModule } from './customers/customers.module';
+import { ShiftsModule } from './shifts/shifts.module';
 
 @Module({
-  imports: [],
-  controllers: [
-    AppController, 
-    ProductsController, 
-    SuppliersController, 
-    PurchasesController, 
-    SalesController,
-    SerialController,
-    DashboardController
+  imports: [
+    ConfigModule.forRoot({ isGlobal: true }),
+    PrismaModule,
+    ExpensesModule,
+    CategoriesModule,
+    ProductsModule,
+    BrandsModule,
+    CustomersModule,
+    SuppliersModule,
+    PurchasesModule,
+    SalesModule,
+    SerialModule,
+    DashboardModule,
+    ShiftsModule,
   ],
-  providers: [
-    AppService, 
-    PrismaService, 
-    ProductsService, 
-    SuppliersService, 
-    PurchasesService, 
-    SalesService,
-    SerialService,
-    DashboardService
-  ],
+  controllers: [AppController],
+  providers: [AppService],
 })
 export class AppModule {}

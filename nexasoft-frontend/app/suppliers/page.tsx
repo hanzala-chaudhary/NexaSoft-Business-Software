@@ -10,7 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, Dialog
 import { Label } from "@/components/ui/label";
 import { Search, Plus, Building2, Trash2, Loader2, Phone, Mail } from "lucide-react";
 
-const API_URL = "https://nexa-soft-business-software--nexasoft.replit.app/api/suppliers";
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
 
 export default function SuppliersPage() {
   const [suppliers, setSuppliers] = useState<any[]>([]);
@@ -18,8 +18,8 @@ export default function SuppliersPage() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [formError, setFormError] = useState("");
 
-  // New Supplier Form State
   const [newSupplier, setNewSupplier] = useState({
     name: "",
     company: "",
@@ -28,14 +28,12 @@ export default function SuppliersPage() {
     address: "",
   });
 
-  // 1. Fetch Suppliers from Database
   const fetchSuppliers = async () => {
     try {
       setIsLoading(true);
-      const res = await fetch(API_URL);
+      const res = await fetch(`${API_URL}/suppliers`);
       if (!res.ok) throw new Error("Failed to fetch suppliers");
-      const data = await res.json();
-      setSuppliers(data);
+      setSuppliers(await res.json());
     } catch (error) {
       console.error("Fetch Error:", error);
     } finally {
@@ -47,7 +45,6 @@ export default function SuppliersPage() {
     fetchSuppliers();
   }, []);
 
-  // Search filter
   const filteredSuppliers = useMemo(() => {
     return suppliers.filter((s) =>
       s.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -56,49 +53,44 @@ export default function SuppliersPage() {
     );
   }, [suppliers, searchQuery]);
 
-  // 2. Handle Add Supplier (Save to Database)
   async function handleAddSupplier(e: React.FormEvent) {
     e.preventDefault();
-    if (!newSupplier.name) return;
+    setFormError("");
+    if (!newSupplier.name) return setFormError("Naam zaroori hai!");
 
     try {
       setIsSaving(true);
-      const res = await fetch(API_URL, {
+      const res = await fetch(`${API_URL}/suppliers`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(newSupplier),
       });
 
-      if (!res.ok) throw new Error("Failed to save supplier");
+      const result = await res.json();
+      if (!res.ok) throw new Error(result.message || "Failed to save supplier");
 
-      // Reload table data
       await fetchSuppliers();
-      
       setIsDialogOpen(false);
       setNewSupplier({ name: "", company: "", phone: "", email: "", address: "" });
-    } catch (error) {
-      console.error("Save Error:", error);
-      alert("Supplier save nahi ho saka!");
+    } catch (error: any) {
+      setFormError(error.message);
     } finally {
       setIsSaving(false);
     }
   }
 
-  // 3. Handle Delete Supplier
   async function handleDelete(id: string) {
     if (!window.confirm("Kya aap waqai is supplier ko delete karna chahte hain?")) return;
 
     try {
-      const res = await fetch(`${API_URL}/${id}`, {
-        method: "DELETE",
-      });
-
-      if (!res.ok) throw new Error("Failed to delete supplier");
+      const res = await fetch(`${API_URL}/suppliers/${id}`, { method: "DELETE" });
+      const result = await res.json();
+      if (!res.ok) throw new Error(result.message || "Failed to delete supplier");
 
       setSuppliers(suppliers.filter((s) => s.id !== id));
-    } catch (error) {
+    } catch (error: any) {
       console.error("Delete Error:", error);
-      alert("Yeh supplier delete nahi ho sakta kyunke inka record Purchases mein majood hai.");
+      alert(error.message);
     }
   }
 
@@ -110,8 +102,10 @@ export default function SuppliersPage() {
           <p className="text-sm text-slate-500">Manage your wholesale distributors and vendors.</p>
         </div>
 
-        {/* ─── Add Supplier Dialog ─── */}
-        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+        <Dialog
+          open={isDialogOpen}
+          onOpenChange={(open) => { setIsDialogOpen(open); if (!open) setFormError(""); }}
+        >
           <DialogTrigger asChild>
             <Button className="bg-indigo-600 hover:bg-indigo-700 gap-2">
               <Plus className="h-4 w-4" />
@@ -124,43 +118,48 @@ export default function SuppliersPage() {
                 <DialogTitle>Add New Supplier</DialogTitle>
               </DialogHeader>
               <div className="grid gap-4 py-4">
+                {formError && (
+                  <div className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">
+                    {formError}
+                  </div>
+                )}
                 <div className="space-y-1.5">
                   <Label htmlFor="name">Contact Person Name <span className="text-red-500">*</span></Label>
-                  <Input 
-                    id="name" 
-                    placeholder="e.g. Ali Ahmed" 
+                  <Input
+                    id="name"
+                    placeholder="e.g. Ali Ahmed"
                     value={newSupplier.name}
-                    onChange={(e) => setNewSupplier({...newSupplier, name: e.target.value})}
+                    onChange={(e) => setNewSupplier({ ...newSupplier, name: e.target.value })}
                     required
                   />
                 </div>
                 <div className="space-y-1.5">
                   <Label htmlFor="company">Company / Distributor Name</Label>
-                  <Input 
-                    id="company" 
-                    placeholder="e.g. Hafeez Center Electronics" 
+                  <Input
+                    id="company"
+                    placeholder="e.g. Hafeez Center Electronics"
                     value={newSupplier.company}
-                    onChange={(e) => setNewSupplier({...newSupplier, company: e.target.value})}
+                    onChange={(e) => setNewSupplier({ ...newSupplier, company: e.target.value })}
                   />
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1.5">
                     <Label htmlFor="phone">Phone Number</Label>
-                    <Input 
-                      id="phone" 
-                      placeholder="0300-XXXXXXX" 
+                    <Input
+                      id="phone"
+                      placeholder="0300-XXXXXXX"
                       value={newSupplier.phone}
-                      onChange={(e) => setNewSupplier({...newSupplier, phone: e.target.value})}
+                      onChange={(e) => setNewSupplier({ ...newSupplier, phone: e.target.value })}
                     />
                   </div>
                   <div className="space-y-1.5">
                     <Label htmlFor="email">Email</Label>
-                    <Input 
-                      id="email" 
+                    <Input
+                      id="email"
                       type="email"
-                      placeholder="ali@company.com" 
+                      placeholder="ali@company.com"
                       value={newSupplier.email}
-                      onChange={(e) => setNewSupplier({...newSupplier, email: e.target.value})}
+                      onChange={(e) => setNewSupplier({ ...newSupplier, email: e.target.value })}
                     />
                   </div>
                 </div>

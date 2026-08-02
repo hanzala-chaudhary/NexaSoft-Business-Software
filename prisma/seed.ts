@@ -5,7 +5,7 @@ const prisma = new PrismaClient();
 
 const SALT_ROUNDS = 10;
 
-const ROLES = ['Super Admin', 'Admin', 'Manager', 'Cashier'];
+const ROLES = ['Owner', 'Manager', 'Salesman'];
 
 const CATEGORIES = ['SSD', 'HDD', 'NVMe SSD', 'External HDD', 'RAM', 'Accessories'];
 
@@ -59,7 +59,7 @@ async function main(): Promise<void> {
       }
 
       // 2. Seed Super Admin User
-      const superAdminRoleId = roleIdByName.get('Super Admin');
+      const superAdminRoleId = roleIdByName.get('Owner');
       if (!superAdminRoleId) {
         throw new Error('Super Admin role was not seeded correctly; aborting user seed.');
       }

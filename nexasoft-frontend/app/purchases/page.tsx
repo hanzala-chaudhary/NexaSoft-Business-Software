@@ -8,34 +8,53 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
-import { Plus, ShoppingCart, Loader2, ListPlus } from "lucide-react";
+import { Plus, ShoppingCart, Loader2, ListPlus, ScanLine, X } from "lucide-react";
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
+
+interface PurchaseItem {
+  productId: string;
+  quantity: number;
+  costPrice: number;
+  serialNumbers: string[];
+  scanInput: string;
+}
 
 export default function PurchasesPage() {
   const [purchases, setPurchases] = useState<any[]>([]);
   const [suppliers, setSuppliers] = useState<any[]>([]);
   const [products, setProducts] = useState<any[]>([]);
-  
+
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [formError, setFormError] = useState("");
 
-  // New Purchase State
   const [supplierId, setSupplierId] = useState("");
-  const [items, setItems] = useState<any[]>([]);
+  const [items, setItems] = useState<PurchaseItem[]>([]);
 
-  // Fetch Initial Data
   const fetchData = async () => {
     try {
       setIsLoading(true);
       const [purchasesRes, suppliersRes, productsRes] = await Promise.all([
-        fetch("https://nexa-soft-business-software--nexasoft.replit.app/api/purchases"),
-        fetch("https://nexa-soft-business-software--nexasoft.replit.app/api/suppliers"),
-        fetch("https://nexa-soft-business-software--nexasoft.replit.app/api/products"),
+        fetch(`${API_URL}/purchases`),
+        fetch(`${API_URL}/suppliers`),
+        fetch(`${API_URL}/products`),
       ]);
 
-      setPurchases(await purchasesRes.json());
-      setSuppliers(await suppliersRes.json());
-      setProducts(await productsRes.json());
+      const purchasesData = purchasesRes.ok ? await purchasesRes.json() : [];
+      const suppliersData = suppliersRes.ok ? await suppliersRes.json() : [];
+      const productsData = productsRes.ok ? await productsRes.json() : [];
+
+      // Defensive check — agar backend ne kisi wajah se array na bheja (error object waghera),
+      // to crash hone ki bajaye khali array use karo
+      setPurchases(Array.isArray(purchasesData) ? purchasesData : []);
+      setSuppliers(Array.isArray(suppliersData) ? suppliersData : []);
+      setProducts(Array.isArray(productsData) ? productsData : []);
+
+      if (!Array.isArray(suppliersData)) {
+        console.warn("Suppliers data array nahi thi:", suppliersData);
+      }
     } catch (error) {
       console.error("Error fetching data:", error);
     } finally {
@@ -47,94 +66,99 @@ export default function PurchasesPage() {
     fetchData();
   }, []);
 
-  // Add Item Row
   const addItemRow = () => {
-    setItems([...items, { productId: "", quantity: 1, costPrice: 0, serialNumbersText: "" }]);
+    setItems([...items, { productId: "", quantity: 1, costPrice: 0, serialNumbers: [], scanInput: "" }]);
   };
 
-  // Update Item Row
   const updateItem = (index: number, field: string, value: any) => {
     const newItems = [...items];
-    newItems[index][field] = value;
-    
-    // Auto-fill cost price when product is selected
+    (newItems[index] as any)[field] = value;
+
+    // Product select hote hi uski last-known purchase price auto-fill kar do
     if (field === "productId") {
-      const selectedProduct = products.find(p => p.id === value);
+      const selectedProduct = products.find((p) => p.id === value);
       if (selectedProduct) {
         newItems[index].costPrice = selectedProduct.purchasePrice || 0;
       }
     }
-    
+
     setItems(newItems);
   };
 
-  // Remove Item Row
+  // Scan input mein Enter dabate hi serial list mein add ho jata hai
+  const handleScanKeyDown = (index: number, e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key !== "Enter") return;
+    e.preventDefault();
+
+    const value = items[index].scanInput.trim();
+    if (!value) return;
+
+    if (items[index].serialNumbers.includes(value)) {
+      alert(`"${value}" pehle hi is item mein scan ho chuka hai!`);
+      return;
+    }
+
+    const newItems = [...items];
+    newItems[index].serialNumbers = [...newItems[index].serialNumbers, value];
+    newItems[index].scanInput = "";
+    // Quantity hamesha scanned serials ki ginti ke barabar rakhte hain
+    newItems[index].quantity = newItems[index].serialNumbers.length;
+    setItems(newItems);
+  };
+
+  const removeSerial = (index: number, serial: string) => {
+    const newItems = [...items];
+    newItems[index].serialNumbers = newItems[index].serialNumbers.filter((s) => s !== serial);
+    if (newItems[index].serialNumbers.length > 0) {
+      newItems[index].quantity = newItems[index].serialNumbers.length;
+    }
+    setItems(newItems);
+  };
+
   const removeItem = (index: number) => {
     setItems(items.filter((_, i) => i !== index));
   };
 
-  // Calculate Total
-  const totalAmount = items.reduce((sum, item) => sum + (Number(item.quantity) * Number(item.costPrice)), 0);
+  const totalAmount = items.reduce((sum, item) => sum + Number(item.quantity) * Number(item.costPrice), 0);
 
-  // Handle Save Purchase (BUG FIXED VERSION)
   const handleSavePurchase = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!supplierId) return alert("Please select a supplier!");
-    if (items.length === 0) return alert("Please add at least one product!");
+    setFormError("");
+
+    if (!supplierId) return setFormError("Supplier select karna zaroori hai!");
+    if (items.length === 0) return setFormError("Kam se kam ek product add karein!");
+    if (items.some((i) => !i.productId)) return setFormError("Har item ka product select karna zaroori hai!");
 
     try {
       setIsSaving(true);
 
-      // 1. Strict Validation: Check quantity vs serial numbers before saving
-      for (const item of items) {
-        const serials = item.serialNumbersText
-          .split('\n')
-          .map((s: string) => s.trim())
-          .filter((s: string) => s !== "");
-        
-        // Agar serial number dale hain, toh quantity ke barabar hone chahiye
-        if (serials.length > 0 && serials.length !== Number(item.quantity)) {
-          setIsSaving(false);
-          return alert(`Masla: Product ki quantity ${item.quantity} hai, par aap ne ${serials.length} serial numbers dale hain!\n\nYa toh quantity theek karein ya utne hi serials dalein.`);
-        }
-      }
+      const formattedItems = items.map((item) => ({
+        productId: item.productId,
+        quantity: Number(item.quantity),
+        costPrice: Number(item.costPrice),
+        serialNumbers: item.serialNumbers,
+      }));
 
-      // 2. Format Data for Database
-      const formattedItems = items.map(item => {
-        const serials = item.serialNumbersText
-          .split('\n')
-          .map((s: string) => s.trim())
-          .filter((s: string) => s !== "");
-        
-        return {
-          productId: item.productId,
-          quantity: Number(item.quantity),
-          costPrice: Number(item.costPrice),
-          serialNumbers: serials
-        };
-      });
-
-      // 3. Save to Database
-      const res = await fetch("https://nexa-soft-business-software--nexasoft.replit.app/api/purchases", {
+      const res = await fetch(`${API_URL}/purchases`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           supplierId,
           totalAmount,
           paymentStatus: "PAID",
-          items: formattedItems
+          items: formattedItems,
         }),
       });
 
-      if (!res.ok) throw new Error("Save failed");
+      const result = await res.json();
+      if (!res.ok) throw new Error(result.message || "Save failed");
 
       await fetchData();
       setIsDialogOpen(false);
       setSupplierId("");
       setItems([]);
-      alert("Purchase Successfully Saved! Stock and Serial Numbers updated.");
     } catch (error: any) {
-      alert(error.message || "Error saving purchase!");
+      setFormError(error.message || "Error saving purchase!");
     } finally {
       setIsSaving(false);
     }
@@ -145,11 +169,13 @@ export default function PurchasesPage() {
       <div className="flex justify-between items-center">
         <div>
           <h1 className="text-2xl font-bold text-slate-900">Purchase Invoices</h1>
-          <p className="text-sm text-slate-500">Record new stock purchases and scan serial numbers.</p>
+          <p className="text-sm text-slate-500">Record new stock purchases — barcode scanner se serial numbers scan karein.</p>
         </div>
 
-        {/* ─── Add Purchase Dialog ─── */}
-        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+        <Dialog
+          open={isDialogOpen}
+          onOpenChange={(open) => { setIsDialogOpen(open); if (!open) setFormError(""); }}
+        >
           <DialogTrigger asChild>
             <Button className="bg-indigo-600 hover:bg-indigo-700">
               <Plus className="h-4 w-4 mr-2" /> New Purchase
@@ -160,25 +186,27 @@ export default function PurchasesPage() {
               <DialogHeader>
                 <DialogTitle>Create Purchase Invoice</DialogTitle>
               </DialogHeader>
-              
+
               <div className="py-4 space-y-6">
-                {/* Supplier Selection */}
+                {formError && (
+                  <div className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">{formError}</div>
+                )}
+
                 <div className="space-y-2">
                   <Label>Select Supplier <span className="text-red-500">*</span></Label>
-                  <select 
+                  <select
                     className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
                     value={supplierId}
                     onChange={(e) => setSupplierId(e.target.value)}
                     required
                   >
                     <option value="">-- Choose Supplier --</option>
-                    {suppliers.map(s => (
-                      <option key={s.id} value={s.id}>{s.name} {s.company ? `(${s.company})` : ''}</option>
+                    {suppliers.map((s) => (
+                      <option key={s.id} value={s.id}>{s.name} {s.company ? `(${s.company})` : ""}</option>
                     ))}
                   </select>
                 </div>
 
-                {/* Items List */}
                 <div className="space-y-4">
                   <div className="flex justify-between items-center">
                     <Label className="text-lg font-semibold">Products & Serial Numbers</Label>
@@ -192,49 +220,73 @@ export default function PurchasesPage() {
                       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
                         <div className="md:col-span-2 space-y-1">
                           <Label>Product</Label>
-                          <select 
+                          <select
                             className="flex h-10 w-full rounded-md border border-input bg-white px-3 py-2 text-sm"
                             value={item.productId}
                             onChange={(e) => updateItem(index, "productId", e.target.value)}
                             required
                           >
                             <option value="">-- Select Product --</option>
-                            {products.map(p => (
+                            {products.map((p) => (
                               <option key={p.id} value={p.id}>{p.name} (Stock: {p.opening_stock})</option>
                             ))}
                           </select>
                         </div>
                         <div className="space-y-1">
-                          <Label>Quantity</Label>
-                          <Input 
-                            type="number" min="1" 
-                            value={item.quantity} 
-                            onChange={(e) => updateItem(index, "quantity", e.target.value)} 
-                            required 
+                          <Label>Quantity {item.serialNumbers.length > 0 && <span className="text-xs text-indigo-600">(scan se auto)</span>}</Label>
+                          <Input
+                            type="number" min="1"
+                            value={item.quantity}
+                            disabled={item.serialNumbers.length > 0}
+                            onChange={(e) => updateItem(index, "quantity", e.target.value)}
+                            required
                           />
                         </div>
                         <div className="space-y-1">
                           <Label>Unit Cost (Rs)</Label>
-                          <Input 
-                            type="number" min="0" 
-                            value={item.costPrice} 
-                            onChange={(e) => updateItem(index, "costPrice", e.target.value)} 
-                            required 
+                          <Input
+                            type="number" min="0"
+                            value={item.costPrice}
+                            onChange={(e) => updateItem(index, "costPrice", e.target.value)}
+                            required
                           />
                         </div>
                       </div>
 
-                      {/* Serial Numbers Box */}
-                      <div className="space-y-1">
-                        <Label className="text-xs text-indigo-600 font-semibold">
-                          Serial Numbers (Paste here, one serial per line) - Total Required: {item.quantity}
+                      {/* Scan-based serial input — textarea ki jagah */}
+                      <div className="space-y-2">
+                        <Label className="text-xs text-indigo-600 font-semibold flex items-center gap-1.5">
+                          <ScanLine className="h-3.5 w-3.5" />
+                          Serial Number scan karein aur Enter dabayein
                         </Label>
-                        <textarea 
-                          className="flex w-full rounded-md border border-input bg-white px-3 py-2 text-sm min-h-[80px]"
-                          placeholder="S/N-12345&#10;S/N-67890"
-                          value={item.serialNumbersText}
-                          onChange={(e) => updateItem(index, "serialNumbersText", e.target.value)}
+                        <Input
+                          placeholder="Scanner yahan point karein... (ya hath se likh ke Enter dabayein)"
+                          value={item.scanInput}
+                          onChange={(e) => updateItem(index, "scanInput", e.target.value)}
+                          onKeyDown={(e) => handleScanKeyDown(index, e)}
+                          className="bg-white"
+                          autoComplete="off"
                         />
+
+                        {item.serialNumbers.length > 0 && (
+                          <div className="flex flex-wrap gap-2 pt-2">
+                            {item.serialNumbers.map((serial) => (
+                              <span
+                                key={serial}
+                                className="inline-flex items-center gap-1.5 rounded-full bg-indigo-100 text-indigo-700 px-3 py-1 text-xs font-mono"
+                              >
+                                {serial}
+                                <button
+                                  type="button"
+                                  onClick={() => removeSerial(index, serial)}
+                                  className="hover:text-rose-600"
+                                >
+                                  <X className="h-3 w-3" />
+                                </button>
+                              </span>
+                            ))}
+                          </div>
+                        )}
                       </div>
 
                       <div className="flex justify-end mt-2">
@@ -252,7 +304,6 @@ export default function PurchasesPage() {
                   )}
                 </div>
 
-                {/* Total */}
                 <div className="flex justify-between items-center pt-4 border-t">
                   <h3 className="text-xl font-bold">Grand Total:</h3>
                   <h3 className="text-2xl font-bold text-indigo-600">Rs. {totalAmount.toLocaleString()}</h3>
@@ -271,7 +322,6 @@ export default function PurchasesPage() {
         </Dialog>
       </div>
 
-      {/* ─── Purchases List Table ─── */}
       <Card>
         <CardContent className="p-0">
           <Table>
@@ -306,9 +356,7 @@ export default function PurchasesPage() {
                     <TableCell>{new Date(p.created_at).toLocaleDateString()}</TableCell>
                     <TableCell className="font-bold text-indigo-600">Rs. {Number(p.total_amount).toLocaleString()}</TableCell>
                     <TableCell>
-                      <Badge className="bg-emerald-100 text-emerald-800 hover:bg-emerald-100">
-                        {p.payment_status}
-                      </Badge>
+                      <Badge className="bg-emerald-100 text-emerald-800 hover:bg-emerald-100">{p.payment_status}</Badge>
                     </TableCell>
                   </TableRow>
                 ))

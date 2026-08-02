@@ -1,16 +1,17 @@
-import { Injectable, BadRequestException } from '@nestjs/common';
+import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { CreateSupplierDto } from './dto/create-supplier.dto';
+import { UpdateSupplierDto } from './dto/update-supplier.dto';
 
 @Injectable()
 export class SuppliersService {
   constructor(private prisma: PrismaService) {}
 
-  // 1. Create Supplier
-  async create(data: any) {
+  async create(data: CreateSupplierDto) {
     try {
       return await this.prisma.supplier.create({
         data: {
-          name: data.name,
+          name: data.name.trim(),
           phone: data.phone || null,
           email: data.email || null,
           company: data.company || null,
@@ -18,25 +19,33 @@ export class SuppliersService {
         },
       });
     } catch (error) {
-      console.error(error);
-      throw new BadRequestException("Supplier save nahi ho saka!");
+      console.error('Supplier Create Error:', error);
+      throw new BadRequestException('Supplier save nahi ho saka!');
     }
   }
 
-  // 2. Get All Suppliers
   async findAll() {
     return this.prisma.supplier.findMany({
-      orderBy: { created_at: 'desc' }
+      where: { deleted_at: null },
+      orderBy: { created_at: 'desc' },
     });
   }
 
-  // 3. Update Supplier
-  async update(id: string, data: any) {
+  async findOne(id: string) {
+    const supplier = await this.prisma.supplier.findUnique({ where: { id } });
+    if (!supplier) {
+      throw new NotFoundException('Supplier nahi mila!');
+    }
+    return supplier;
+  }
+
+  async update(id: string, data: UpdateSupplierDto) {
+    await this.findOne(id);
     try {
       return await this.prisma.supplier.update({
         where: { id },
         data: {
-          name: data.name,
+          name: data.name?.trim(),
           phone: data.phone,
           email: data.email,
           company: data.company,
@@ -44,18 +53,19 @@ export class SuppliersService {
         },
       });
     } catch (error) {
-      throw new BadRequestException("Supplier update nahi ho saka!");
+      console.error('Supplier Update Error:', error);
+      throw new BadRequestException('Supplier update nahi ho saka!');
     }
   }
 
-  // 4. Delete Supplier
   async remove(id: string) {
+    await this.findOne(id);
     try {
-      return await this.prisma.supplier.delete({
-        where: { id },
-      });
+      return await this.prisma.supplier.delete({ where: { id } });
     } catch (error) {
-      throw new BadRequestException("Yeh supplier pehle kisi purchase mein use ho chuka hai, is liye delete nahi ho sakta!");
+      throw new BadRequestException(
+        'Yeh supplier pehle kisi purchase mein use ho chuka hai, is liye delete nahi ho sakta!',
+      );
     }
   }
 }

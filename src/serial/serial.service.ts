@@ -6,17 +6,14 @@ export class SerialService {
   constructor(private prisma: PrismaService) {}
 
   async trackSerialNumber(serialNumber: string) {
-    // Database mein serial number dhoondein aur uski poori history nikalen
     const serialData = await this.prisma.serialized_products.findFirst({
-      where: {
-        serial_number: serialNumber,
-      },
+      where: { serial_number: serialNumber },
       include: {
-        products: true, // Product ki details
-        supplier: true, // Kis se khareeda
-        purchase: true, // Purchase invoice
-        customer: true, // Kisko becha (agar becha hai)
-        sale: true,     // Sale invoice
+        products: true,
+        supplier: true,
+        purchase: true,
+        customer: true,
+        sale: true,
       },
     });
 
@@ -25,5 +22,14 @@ export class SerialService {
     }
 
     return serialData;
+  }
+
+  // Naya: kisi product ke saare abhi-tak-bikay-nahi serials (POS aur Products page ke liye)
+  async getInStockSerialsForProduct(productId: string) {
+    return this.prisma.serialized_products.findMany({
+      where: { product_id: productId, status: 'IN_STOCK' },
+      select: { id: true, serial_number: true, purchase_date: true },
+      orderBy: { created_at: 'asc' },
+    });
   }
 }

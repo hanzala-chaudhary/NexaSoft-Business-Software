@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { Prisma } from '@prisma/client';
 
 @Injectable()
 export class ProductsService {
@@ -8,83 +9,162 @@ export class ProductsService {
   async scanSerialNumber(serial_number: string) {
     const item = await this.prisma.serialized_products.findFirst({
       where: { serial_number },
-      include: { products: true }, 
+      include: { products: true },
     });
-    
+
     if (!item) {
       throw new NotFoundException('Yeh serial number hamare system mein majood nahi hai!');
     }
     return item;
   }
 
-  async createProduct(data: any) {
-    try {
-      // 1. Auto-generate SKU
-      const generatedSku = `PRD-${Math.floor(10000 + Math.random() * 90000)}`;
-      
-      // 2. Auto-generate unique Slug (e.g. "ram-8gb-1698765432")
-      const generatedSlug = data.name.toLowerCase().replace(/[^a-z0-9]+/g, '-') + '-' + Date.now();
+  async searchProducts(query: string) {
+    const q = query.trim();
+    if (!q) return this.getAllProducts();
 
+    const directMatches = await this.prisma.product.findMany({
+      where: {
+        deleted_at: null,
+        OR: [
+          { name: { contains: q, mode: 'insensitive' } },
+          { sku: { contains: q, mode: 'insensitive' } },
+          { master_barcode: { contains: q, mode: 'insensitive' } },
+        ],
+      },
+      include: { category: true, brand: true },
+    });
+
+    const serialMatches = await this.prisma.serialized_products.findMany({
+      where: { serial_number: { contains: q, mode: 'insensitive' } },
+      include: {
+        products: { include: { category: true, brand: true } },
+        sale: true,
+        customer: true,
+      },
+      take: 30,
+    });
+
+    const resultMap = new Map<string, any>();
+
+    for (const p of directMatches) {
+      resultMap.set(p.id, { ...p, matchedSerials: [] as any[] });
+    }
+
+    for (const s of serialMatches) {
+      const p = s.products;
+      if (!resultMap.has(p.id)) {
+        resultMap.set(p.id, { ...p, matchedSerials: [] as any[] });
+      }
+      resultMap.get(p.id).matchedSerials.push({
+        serial_number: s.serial_number,
+        status: s.status,
+        saleInvoice: s.sale?.invoice_number || null,
+        saleDate: s.sale?.created_at || null,
+        customerName: s.customer?.name || null,
+      });
+    }
+
+    return Array.from(resultMap.values());
+  }
+
+  async createProduct(data: any) {
+    if (!data.name || !data.name.trim()) {
+      throw new BadRequestException('Product ka naam zaroori hai!');
+    }
+    if (data.salePrice === undefined || data.salePrice === null || isNaN(Number(data.salePrice))) {
+      throw new BadRequestException('Sale price zaroori hai aur number honi chahiye!');
+    }
+    if (data.purchasePrice === undefined || data.purchasePrice === null || isNaN(Number(data.purchasePrice))) {
+      throw new BadRequestException('Purchase price zaroori hai aur number honi chahiye!');
+    }
+    const generatedSku = `PRD-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`;
+    const generatedSlug =
+      data.name.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-') + '-' + Date.now();
+
+    try {
       return await this.prisma.product.create({
         data: {
-          name: data.name,
-          sku: generatedSku, 
+          name: data.name.trim(),
+          sku: generatedSku,
           slug: generatedSlug,
-          master_barcode: data.masterBarcode || null,
+          // Serialized product ho to master_barcode kabhi save nahi karte, chahe kuch bheja bhi ho
+          master_barcode: data.isSerialized ? null : data.masterBarcode?.trim() || null,
           purchasePrice: Number(data.purchasePrice) || 0,
-          salePrice: Number(data.salePrice) || 0,
+          salePrice: Number(data.salePrice),
           opening_stock: Number(data.openingStock) || 0,
-          notes: `Category: ${data.category || 'N/A'}`, 
+          categoryId: data.categoryId || undefined,
+          brandId: data.brandId || undefined,
+          is_serialized: data.isSerialized ?? false,
           is_active: true,
-        }
+        },
       });
     } catch (error) {
-      console.error("❌ Prisma Database Error:", error);
-      throw new BadRequestException("Product database mein save nahi ho saka!");
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+        throw new BadRequestException('Yeh barcode pehle se kisi aur product mein use ho raha hai!');
+      }
+      console.error('❌ Prisma Database Error:', error);
+      throw new BadRequestException('Product database mein save nahi ho saka!');
     }
   }
 
   async getAllProducts() {
     return this.prisma.product.findMany({
-      orderBy: { createdAt: 'desc' }
+      where: { deleted_at: null },
+      orderBy: { createdAt: 'desc' },
+      include: { category: true, brand: true },
     });
   }
 
-  // Product Update karne ke liye
+  async getProductById(id: string) {
+    const product = await this.prisma.product.findUnique({ where: { id } });
+    if (!product) {
+      throw new NotFoundException('Product nahi mila!');
+    }
+    return product;
+  }
+
   async updateProduct(id: string, data: any) {
+    await this.getProductById(id);
+
     try {
       return await this.prisma.product.update({
         where: { id },
         data: {
-          name: data.name,
-          master_barcode: data.masterBarcode,
-          purchasePrice: Number(data.purchasePrice),
-          salePrice: Number(data.salePrice),
-          opening_stock: Number(data.openingStock),
-          notes: `Category: ${data.category || 'N/A'}`,
+          name: data.name?.trim(),
+          master_barcode: data.isSerialized ? null : data.masterBarcode?.trim() || null,
+          purchasePrice: data.purchasePrice !== undefined ? Number(data.purchasePrice) : undefined,
+          salePrice: data.salePrice !== undefined ? Number(data.salePrice) : undefined,
+          opening_stock: data.openingStock !== undefined ? Number(data.openingStock) : undefined,
+          categoryId: data.categoryId || undefined,
+          brandId: data.brandId || undefined,
+          is_serialized: data.isSerialized !== undefined ? data.isSerialized : undefined,
         },
       });
     } catch (error) {
-      console.error("Update Error:", error);
-      throw new BadRequestException("Product update nahi ho saka!");
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+        throw new BadRequestException('Yeh barcode pehle se kisi aur product mein use ho raha hai!');
+      }
+      console.error('Update Error:', error);
+      throw new BadRequestException('Product update nahi ho saka!');
     }
   }
 
-  // Product Delete karne ke liye (Force Delete)
   async deleteProduct(id: string) {
+    await this.getProductById(id);
+
     try {
-      // Step 1: Pehle is product ke tamam Serial Numbers delete karein
       await this.prisma.serialized_products.deleteMany({
         where: { product_id: id },
-      }).catch(() => null); 
+      });
 
-      // Step 2: Ab main product aaram se delete ho jayega
       return await this.prisma.product.delete({
         where: { id },
       });
     } catch (error) {
-      console.error("Delete Error:", error);
-      throw new BadRequestException("Yeh product pehle kisi Sale/Bill mein use ho chuka hai is liye delete nahi ho sakta!");
+      console.error('Delete Error:', error);
+      throw new BadRequestException(
+        'Yeh product pehle kisi Sale/Purchase mein use ho chuka hai is liye delete nahi ho sakta!',
+      );
     }
   }
-}
+} 

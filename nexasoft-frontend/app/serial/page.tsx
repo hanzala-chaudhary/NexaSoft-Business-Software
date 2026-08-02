@@ -1,11 +1,13 @@
 "use client";
 
 import React, { useState } from "react";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Search, Package, ShoppingCart, Truck, CheckCircle2, AlertCircle, Calendar, FileText, User } from "lucide-react";
+import { Search, Package, ShoppingCart, Truck, AlertCircle, Calendar, FileText, User } from "lucide-react";
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
 
 export default function SerialTrackerPage() {
   const [searchQuery, setSearchQuery] = useState("");
@@ -22,11 +24,12 @@ export default function SerialTrackerPage() {
     setSerialData(null);
 
     try {
-      const res = await fetch(`https://nexa-soft-business-software--nexasoft.replit.app/api/serial/${searchQuery}`);
-      if (!res.ok) {
-        throw new Error("Yeh serial number database mein nahi mila!");
-      }
+      const res = await fetch(`${API_URL}/serial/${encodeURIComponent(searchQuery.trim())}`);
       const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.message || "Yeh serial number database mein nahi mila!");
+      }
       setSerialData(data);
     } catch (err: any) {
       setError(err.message);
@@ -42,14 +45,13 @@ export default function SerialTrackerPage() {
         <p className="text-slate-500">Scan or type a serial number to track its complete lifecycle (Purchase to Sale).</p>
       </div>
 
-      {/* ─── SEARCH BAR ─── */}
       <Card className="shadow-sm border-indigo-100 bg-indigo-50/30">
         <CardContent className="p-6">
           <form onSubmit={handleSearch} className="flex gap-4">
             <div className="relative flex-1">
               <Search className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
-              <Input 
-                placeholder="Scan Barcode or Enter Serial Number here..." 
+              <Input
+                placeholder="Scan Barcode or Enter Serial Number here..."
                 className="pl-12 h-14 text-lg bg-white border-slate-300 shadow-sm rounded-xl focus-visible:ring-indigo-500"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
@@ -63,7 +65,6 @@ export default function SerialTrackerPage() {
         </CardContent>
       </Card>
 
-      {/* ─── ERROR MESSAGE ─── */}
       {error && (
         <div className="bg-rose-50 border border-rose-200 text-rose-600 p-4 rounded-xl flex items-center gap-3">
           <AlertCircle className="h-5 w-5" />
@@ -71,11 +72,8 @@ export default function SerialTrackerPage() {
         </div>
       )}
 
-      {/* ─── TRACKING RESULTS TIMELINE ─── */}
       {serialData && (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-          
-          {/* Item Summary Card */}
           <Card className="md:col-span-1 shadow-sm border-slate-200 h-fit">
             <CardHeader className="bg-slate-50 border-b pb-4">
               <CardTitle className="text-lg">Item Summary</CardTitle>
@@ -90,7 +88,7 @@ export default function SerialTrackerPage() {
                   <p className="text-lg font-bold text-slate-900">{serialData.products?.name}</p>
                 </div>
               </div>
-              
+
               <div className="space-y-4 pt-4 border-t">
                 <div>
                   <p className="text-sm text-slate-500 mb-1">Serial Number</p>
@@ -100,38 +98,37 @@ export default function SerialTrackerPage() {
                 </div>
                 <div>
                   <p className="text-sm text-slate-500 mb-2">Current Status</p>
-                  <Badge 
+                  <Badge
                     className={`px-3 py-1 text-sm ${
                       serialData.status === 'IN_STOCK' ? 'bg-emerald-100 text-emerald-700 hover:bg-emerald-100' :
                       serialData.status === 'SOLD' ? 'bg-blue-100 text-blue-700 hover:bg-blue-100' :
                       'bg-slate-100 text-slate-700'
                     }`}
                   >
-                    {serialData.status.replace('_', ' ')}
+                    {serialData.status?.replace('_', ' ')}
                   </Badge>
                 </div>
               </div>
             </CardContent>
           </Card>
 
-          {/* Timeline Card */}
           <Card className="md:col-span-2 shadow-sm border-slate-200">
             <CardHeader className="bg-slate-50 border-b pb-4">
               <CardTitle className="text-lg">Lifecycle Timeline</CardTitle>
             </CardHeader>
             <CardContent className="p-8">
               <div className="relative border-l-2 border-slate-200 ml-4 space-y-12">
-                
-                {/* STEP 1: PURCHASE (Khareed) */}
                 <div className="relative pl-8">
                   <div className="absolute -left-[11px] bg-emerald-500 h-5 w-5 rounded-full border-4 border-white shadow-sm flex items-center justify-center"></div>
                   <div className="flex flex-col gap-1 mb-4">
                     <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
                       <Truck className="h-5 w-5 text-emerald-600" /> Item Purchased
                     </h3>
-                    <p className="text-sm text-slate-500 flex items-center gap-1">
-                      <Calendar className="h-4 w-4" /> {new Date(serialData.purchase?.created_at).toLocaleString()}
-                    </p>
+                    {serialData.purchase?.created_at && (
+                      <p className="text-sm text-slate-500 flex items-center gap-1">
+                        <Calendar className="h-4 w-4" /> {new Date(serialData.purchase.created_at).toLocaleString()}
+                      </p>
+                    )}
                   </div>
                   <div className="bg-slate-50 rounded-xl p-4 border border-slate-100 grid grid-cols-2 gap-4 text-sm">
                     <div>
@@ -147,21 +144,19 @@ export default function SerialTrackerPage() {
                   </div>
                 </div>
 
-                {/* STEP 2: SALE (Bikri) */}
                 <div className="relative pl-8">
                   <div className={`absolute -left-[11px] h-5 w-5 rounded-full border-4 border-white shadow-sm flex items-center justify-center ${
                     serialData.sale ? 'bg-blue-500' : 'bg-slate-300'
                   }`}></div>
-                  
+
                   {serialData.sale ? (
-                    // Agar bik chuka hai
                     <>
                       <div className="flex flex-col gap-1 mb-4">
                         <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
                           <ShoppingCart className="h-5 w-5 text-blue-600" /> Item Sold
                         </h3>
                         <p className="text-sm text-slate-500 flex items-center gap-1">
-                          <Calendar className="h-4 w-4" /> {new Date(serialData.sale?.created_at).toLocaleString()}
+                          <Calendar className="h-4 w-4" /> {new Date(serialData.sale.created_at).toLocaleString()}
                         </p>
                       </div>
                       <div className="bg-slate-50 rounded-xl p-4 border border-slate-100 grid grid-cols-2 gap-4 text-sm">
@@ -174,13 +169,12 @@ export default function SerialTrackerPage() {
                         <div>
                           <p className="text-slate-500">Sale Invoice</p>
                           <p className="font-medium text-slate-900 flex items-center gap-1">
-                            <FileText className="h-3 w-3" /> {serialData.sale?.invoice_number}
+                            <FileText className="h-3 w-3" /> {serialData.sale.invoice_number}
                           </p>
                         </div>
                       </div>
                     </>
                   ) : (
-                    // Agar abhi tak IN_STOCK hai
                     <div className="flex flex-col gap-2 opacity-60">
                       <h3 className="text-lg font-bold text-slate-500 flex items-center gap-2">
                         <ShoppingCart className="h-5 w-5" /> Pending Sale
@@ -189,11 +183,9 @@ export default function SerialTrackerPage() {
                     </div>
                   )}
                 </div>
-
               </div>
             </CardContent>
           </Card>
-
         </div>
       )}
     </div>
