@@ -6,14 +6,15 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import {
   Search, Plus, Package, Trash2, Pencil, Loader2,
   ChevronDown, ChevronRight, Barcode, Printer, Tag, FileText, User, ShoppingCart
 } from "lucide-react";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
+// Yahan maine explicitly live link daal diya hai taake local aur live ka masla hi na rahe.
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "https://nexasoft-business-software-production.up.railway.app/api";
 
 const emptyForm = { name: "", salePrice: "", purchasePrice: "", barcode: "", stock: "", categoryId: "", isSerialized: false };
 
@@ -197,7 +198,6 @@ export default function ProductsPage() {
 
     try {
       setIsSaving(true);
-      // Zaroori: backend DTO ke sahi field names (camelCase) use karo, warna silently discard ho jate hain
       const payload = {
         name: form.name,
         salePrice: Number(form.salePrice),
@@ -246,7 +246,7 @@ export default function ProductsPage() {
   const openPrintModal = (product: any, e: React.MouseEvent) => {
     e.stopPropagation();
     if (product.isSerialized) {
-      alert("Ye serialized product hai — isके liye alag se Serial Number labels chahiye honge, master barcode print nahi hota.");
+      alert("Ye serialized product hai — iske liye alag se Serial Number labels chahiye honge, master barcode print nahi hota.");
       return;
     }
     if (!product.barcode || product.barcode === "-") {
