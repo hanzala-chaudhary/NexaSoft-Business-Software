@@ -9,8 +9,8 @@ const nextConfig: NextConfig = {
     return [
       {
         source: '/',
-        destination: '/dashboard', // Replace with your actual starting page (e.g., '/login')
-        permanent: false,
+        destination: '/dashboard',
+        permanent: true,
       },
     ];
   },
