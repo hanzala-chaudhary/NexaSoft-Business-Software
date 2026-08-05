@@ -10,14 +10,14 @@ export class SalesService {
   private async resolveSalesmanId(requestUserId?: string): Promise<string> {
     if (requestUserId) return requestUserId;
 
-    // Seed se bana hua Super Admin dhundo
+    // User model mein createdAt @map("created_at") hai — client field abhi bhi
+    // camelCase "createdAt" hi hai, DB column snake_case hai.
     const fallbackUser = await (this.prisma as any).user.findFirst({
-      orderBy: { created_at: 'asc' },
+      orderBy: { createdAt: 'asc' },
     });
 
     if (fallbackUser) return fallbackUser.id;
 
-    // Last resort: sahi schema se naya user banao
     let role = await (this.prisma as any).role.findFirst({
       where: { name: 'Super Admin' },
     });
@@ -38,7 +38,6 @@ export class SalesService {
       },
     });
 
-    // Role assign karo
     await (this.prisma as any).user_roles.create({
       data: { user_id: newUser.id, role_id: role.id, updated_at: new Date() },
     });
@@ -72,7 +71,7 @@ export class SalesService {
       } else if (customerPhone || (customerName && customerName !== 'Walk-in Customer')) {
         const nameToSave = customerName || 'Unknown Customer';
         if (customerPhone) {
-          // phone unique nahi hai schema mein — findUnique nahi chal sakta
+          // Customer.phone unique nahi hai schema mein — findFirst use karo
           const existing = await (prisma as any).customer.findFirst({
             where: { phone: customerPhone },
           });
@@ -106,6 +105,7 @@ export class SalesService {
           total_amount:   grandTotal,
           discount:       Number(discount),
           paid_amount:    finalPaidAmount,
+          payment_method: paymentMethod,   // Sale khud bhi payment_method rakhta hai
           payment_status: paymentStatus,
           customer_id:    finalCustomerId,
           salesman_id:    finalUserId,
@@ -117,9 +117,9 @@ export class SalesService {
         await (prisma as any).payment.create({
           data: {
             sale_id:          sale.id,
-            salesman_id:      finalUserId,
+            received_by:      finalUserId,       // Payment model mein field "received_by" hai, "salesman_id" nahi
             amount:           finalPaidAmount,
-            payment_method:   paymentMethod,       // CASH / BANK_TRANSFER / CARD
+            method:           paymentMethod,      // Payment ka field literally "method" hai, "payment_method" nahi
             type:             'SALE_PAYMENT',
             reference_number: `REC-${invoiceNumber}`,
           },
@@ -133,7 +133,6 @@ export class SalesService {
         });
         if (!product) throw new BadRequestException(`Product nahi mili: ${item.productId}`);
 
-        // currentStock schema mein exist nahi karta — sirf opening_stock hai
         const stock = product.opening_stock ?? 0;
         if (Number(stock) < item.quantity) {
           throw new BadRequestException(`"${product.name}" ka stock khatam hai!`);
@@ -144,7 +143,7 @@ export class SalesService {
             sale_id:    sale.id,
             product_id: item.productId,
             quantity:   item.quantity,
-            sale_price: Number(item.salePrice),   // unitPrice + totalPrice ki jagah sirf sale_price
+            sale_price: Number(item.salePrice),
           },
         });
 
@@ -153,13 +152,13 @@ export class SalesService {
             where: { id: item.productId },
             data:  { opening_stock: { decrement: item.quantity } },
           }),
+          // InventoryTransaction model mein koi user/salesman field hi nahi hai
           (prisma as any).inventoryTransaction.create({
             data: {
               product_id: item.productId,
-              type:       'SALE',              // 'action' → 'type'
+              type:       'SALE',
               quantity:   -item.quantity,
               sale_id:    sale.id,
-              salesman_id: finalUserId,
               notes:      `Sold via POS — ${invoiceNumber}`,
             },
           }),
@@ -167,17 +166,19 @@ export class SalesService {
 
         if (item.serialNumbers?.length > 0) {
           parallelTasks.push(
-            (prisma as any).productSerial.updateMany({
+            // Model ka naam "serialized_products" hai, "productSerial" nahi
+            (prisma as any).serialized_products.updateMany({
               where: {
                 serial_number: { in: item.serialNumbers },
                 product_id: item.productId,
               },
               data: {
-                status:        'SOLD',
-                sale_item_id:  saleItem.id,
-                customer_id:   finalCustomerId,
-                sale_price:    Number(item.salePrice),
-                sale_date:     new Date(),
+                status:          'SOLD',
+                sale_invoice_id: sale.id,
+                sale_item_id:    saleItem.id,
+                customer_id:     finalCustomerId,
+                sale_date:       new Date(),
+                // Note: is model mein "sale_price" field exist hi nahi karta — hata diya
               },
             }),
           );
@@ -186,17 +187,12 @@ export class SalesService {
         await Promise.all(parallelTasks);
       }
 
-      // ── Return final sale with invoice_number for frontend ────────────────
       const finalSale = await (prisma as any).sale.findUnique({
         where:   { id: sale.id },
         include: { customer: true, items: { include: { product: true } } },
       });
 
-      return {
-        ...finalSale,
-        invoice_number: finalSale.invoice_number,
-      };
-
+      return finalSale; // Sale.invoice_number pehle se hi snake_case hai, extra mapping ki zaroorat nahi
     }, { maxWait: 20000, timeout: 120000 });
   }
 
@@ -236,21 +232,26 @@ export class SalesService {
           }),
           (prisma as any).inventoryTransaction.create({
             data: {
-              product_id:  returnItem.productId,
-              type:        'RETURN',
-              quantity:    returnItem.quantity,
-              sale_id:     saleId,
-              salesman_id: finalUserId,
-              notes:       'Returned via POS',
+              product_id: returnItem.productId,
+              type:       'RETURN',
+              quantity:   returnItem.quantity,
+              sale_id:    saleId,
+              notes:      'Returned via POS',
             },
           }),
         ];
 
         if (returnItem.serialNumbers?.length > 0) {
           returnTasks.push(
-            (prisma as any).productSerial.updateMany({
+            (prisma as any).serialized_products.updateMany({
               where: { serial_number: { in: returnItem.serialNumbers }, sale_item_id: saleItem.id },
-              data:  { status: 'IN_STOCK', sale_item_id: null, customer_id: null, sale_date: null },
+              data:  {
+                status:          'IN_STOCK',
+                sale_item_id:    null,
+                sale_invoice_id: null,
+                customer_id:     null,
+                sale_date:       null,
+              },
             }),
           );
         }
@@ -268,9 +269,13 @@ export class SalesService {
       });
 
       if (Number(updatedSale.total_amount) <= 0) {
+        // NOTE: schema mein Sale par "order_status" field exist nahi karta.
+        // Sirf payment_status update kar raha hoon. Agar sale ko "cancelled" mark
+        // karna hai to bata do — RecordStatus enum (ACTIVE/INACTIVE/DRAFT/ARCHIVED)
+        // mein se koi status use karna hoga ya migration se naya field add karna hoga.
         await (prisma as any).sale.update({
           where: { id: saleId },
-          data:  { payment_status: 'REFUNDED', order_status: 'CANCELLED' },
+          data:  { payment_status: 'REFUNDED' },
         });
       }
 
