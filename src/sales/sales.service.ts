@@ -11,7 +11,9 @@ export class SalesService {
     if (requestUserId) return requestUserId;
 
     // Seed se bana hua Super Admin dhundo
-    const fallbackUser = await (this.prisma as any).user.findFirst();
+    const fallbackUser = await (this.prisma as any).user.findFirst({
+      orderBy: { created_at: 'asc' },
+    });
 
     if (fallbackUser) return fallbackUser.id;
 
@@ -53,7 +55,7 @@ export class SalesService {
       customerPhone,
       discount = 0,
       paidAmount = 0,
-      paymentMethod = 'CASH',   // ← FIX: frontend se aane wala method
+      paymentMethod = 'CASH',
     } = data;
 
     if (!items || items.length === 0) throw new BadRequestException('Cart is empty!');
@@ -70,7 +72,8 @@ export class SalesService {
       } else if (customerPhone || (customerName && customerName !== 'Walk-in Customer')) {
         const nameToSave = customerName || 'Unknown Customer';
         if (customerPhone) {
-          const existing = await (prisma as any).customer.findUnique({
+          // phone unique nahi hai schema mein — findUnique nahi chal sakta
+          const existing = await (prisma as any).customer.findFirst({
             where: { phone: customerPhone },
           });
           finalCustomerId = existing
@@ -87,25 +90,25 @@ export class SalesService {
         calculatedSubTotal += Number(item.salePrice) * Number(item.quantity);
       }
 
-      const grandTotal       = calculatedSubTotal - Number(discount);
-      const finalPaidAmount  = Number(paidAmount);
+      const grandTotal      = calculatedSubTotal - Number(discount);
+      const finalPaidAmount = Number(paidAmount);
 
       let paymentStatus = 'PAID';
-      if (finalPaidAmount <= 0)            paymentStatus = 'PENDING';
-      else if (finalPaidAmount < grandTotal) paymentStatus = 'PARTIAL';
+      if (finalPaidAmount <= 0)              paymentStatus = 'PENDING';
+      else if (finalPaidAmount < grandTotal)  paymentStatus = 'PARTIAL';
 
       const invoiceNumber = `INV-SALE-${Date.now()}`;
 
       // ── Sale record ───────────────────────────────────────────────────────
       const sale = await (prisma as any).sale.create({
         data: {
-          invoiceNumber,
-          totalAmount:   grandTotal,
-          discount:      Number(discount),
-          paidAmount:    finalPaidAmount,
-          paymentStatus,
-          customerId:    finalCustomerId,
-          userId:        finalUserId,
+          invoice_number: invoiceNumber,
+          total_amount:   grandTotal,
+          discount:       Number(discount),
+          paid_amount:    finalPaidAmount,
+          payment_status: paymentStatus,
+          customer_id:    finalCustomerId,
+          salesman_id:    finalUserId,
         },
       });
 
@@ -113,12 +116,12 @@ export class SalesService {
       if (finalPaidAmount > 0) {
         await (prisma as any).payment.create({
           data: {
-            saleId:          sale.id,
-            userId:          finalUserId,
-            amount:          finalPaidAmount,
-            method:          paymentMethod,       // ← FIX: CASH / BANK_TRANSFER / CARD
-            type:            'SALE_PAYMENT',
-            referenceNumber: `REC-${invoiceNumber}`,
+            sale_id:          sale.id,
+            salesman_id:      finalUserId,
+            amount:           finalPaidAmount,
+            payment_method:   paymentMethod,       // CASH / BANK_TRANSFER / CARD
+            type:             'SALE_PAYMENT',
+            reference_number: `REC-${invoiceNumber}`,
           },
         });
       }
@@ -130,36 +133,34 @@ export class SalesService {
         });
         if (!product) throw new BadRequestException(`Product nahi mili: ${item.productId}`);
 
-        const stock = product.currentStock ?? product.current_stock ?? product.opening_stock ?? 0;
+        // currentStock schema mein exist nahi karta — sirf opening_stock hai
+        const stock = product.opening_stock ?? 0;
         if (Number(stock) < item.quantity) {
           throw new BadRequestException(`"${product.name}" ka stock khatam hai!`);
         }
 
         const saleItem = await (prisma as any).saleItem.create({
           data: {
-            saleId:     sale.id,
-            productId:  item.productId,
+            sale_id:    sale.id,
+            product_id: item.productId,
             quantity:   item.quantity,
-            unitPrice:  Number(item.salePrice),
-            totalPrice: Number(item.salePrice) * item.quantity,
+            sale_price: Number(item.salePrice),   // unitPrice + totalPrice ki jagah sirf sale_price
           },
         });
-
-        const stockField = product.currentStock !== undefined ? 'currentStock' : 'opening_stock';
 
         const parallelTasks: Promise<any>[] = [
           (prisma as any).product.update({
             where: { id: item.productId },
-            data:  { [stockField]: { decrement: item.quantity } },
+            data:  { opening_stock: { decrement: item.quantity } },
           }),
           (prisma as any).inventoryTransaction.create({
             data: {
-              productId: item.productId,
-              action:    'SALE',
-              quantity:  -item.quantity,
-              saleId:    sale.id,
-              userId:    finalUserId,
-              notes:     `Sold via POS — ${invoiceNumber}`,
+              product_id: item.productId,
+              type:       'SALE',              // 'action' → 'type'
+              quantity:   -item.quantity,
+              sale_id:    sale.id,
+              salesman_id: finalUserId,
+              notes:      `Sold via POS — ${invoiceNumber}`,
             },
           }),
         ];
@@ -168,15 +169,15 @@ export class SalesService {
           parallelTasks.push(
             (prisma as any).productSerial.updateMany({
               where: {
-                serialNumber: { in: item.serialNumbers },
-                productId: item.productId,
+                serial_number: { in: item.serialNumbers },
+                product_id: item.productId,
               },
               data: {
-                status:     'SOLD',
-                saleItemId: saleItem.id,
-                customerId: finalCustomerId,
-                salePrice:  Number(item.salePrice),
-                saleDate:   new Date(),
+                status:        'SOLD',
+                sale_item_id:  saleItem.id,
+                customer_id:   finalCustomerId,
+                sale_price:    Number(item.salePrice),
+                sale_date:     new Date(),
               },
             }),
           );
@@ -191,10 +192,9 @@ export class SalesService {
         include: { customer: true, items: { include: { product: true } } },
       });
 
-      // Frontend invoice_number expect karta hai (snake_case)
       return {
         ...finalSale,
-        invoice_number: finalSale.invoiceNumber,
+        invoice_number: finalSale.invoice_number,
       };
 
     }, { maxWait: 20000, timeout: 120000 });
@@ -212,41 +212,36 @@ export class SalesService {
 
       for (const returnItem of itemsToReturn) {
         const saleItem = await (prisma as any).saleItem.findFirst({
-          where: { saleId, productId: returnItem.productId },
+          where: { sale_id: saleId, product_id: returnItem.productId },
         });
 
         if (!saleItem || saleItem.quantity < returnItem.quantity) {
           throw new BadRequestException('Invalid return quantity!');
         }
 
-        const unitPrice  = saleItem.salePrice ?? saleItem.unitPrice ?? 0;
+        const unitPrice   = saleItem.sale_price ?? 0;
         const refundValue = Number(unitPrice) * returnItem.quantity;
         totalRefundAmount += refundValue;
-
-        const product = await (prisma as any).product.findUnique({
-          where: { id: returnItem.productId },
-        });
-        const stockField = product?.currentStock !== undefined ? 'currentStock' : 'opening_stock';
 
         const returnTasks: Promise<any>[] = [
           saleItem.quantity === returnItem.quantity
             ? (prisma as any).saleItem.delete({ where: { id: saleItem.id } })
             : (prisma as any).saleItem.update({
                 where: { id: saleItem.id },
-                data:  { quantity: { decrement: returnItem.quantity }, totalPrice: { decrement: refundValue } },
+                data:  { quantity: { decrement: returnItem.quantity } },
               }),
           (prisma as any).product.update({
             where: { id: returnItem.productId },
-            data:  { [stockField]: { increment: returnItem.quantity } },
+            data:  { opening_stock: { increment: returnItem.quantity } },
           }),
           (prisma as any).inventoryTransaction.create({
             data: {
-              productId: returnItem.productId,
-              action:    'RETURN',
-              quantity:  returnItem.quantity,
-              saleId,
-              userId:    finalUserId,
-              notes:     'Returned via POS',
+              product_id:  returnItem.productId,
+              type:        'RETURN',
+              quantity:    returnItem.quantity,
+              sale_id:     saleId,
+              salesman_id: finalUserId,
+              notes:       'Returned via POS',
             },
           }),
         ];
@@ -254,8 +249,8 @@ export class SalesService {
         if (returnItem.serialNumbers?.length > 0) {
           returnTasks.push(
             (prisma as any).productSerial.updateMany({
-              where: { serialNumber: { in: returnItem.serialNumbers }, saleItemId: saleItem.id },
-              data:  { status: 'IN_STOCK', saleItemId: null, customerId: null, saleDate: null },
+              where: { serial_number: { in: returnItem.serialNumbers }, sale_item_id: saleItem.id },
+              data:  { status: 'IN_STOCK', sale_item_id: null, customer_id: null, sale_date: null },
             }),
           );
         }
@@ -266,16 +261,16 @@ export class SalesService {
       const updatedSale = await (prisma as any).sale.update({
         where: { id: saleId },
         data:  {
-          totalAmount: { decrement: totalRefundAmount },
-          paidAmount:  { decrement: totalRefundAmount },
+          total_amount: { decrement: totalRefundAmount },
+          paid_amount:  { decrement: totalRefundAmount },
         },
         include: { items: { include: { product: true } }, customer: true },
       });
 
-      if (Number(updatedSale.totalAmount) <= 0) {
+      if (Number(updatedSale.total_amount) <= 0) {
         await (prisma as any).sale.update({
           where: { id: saleId },
-          data:  { paymentStatus: 'REFUNDED', orderStatus: 'CANCELLED' },
+          data:  { payment_status: 'REFUNDED', order_status: 'CANCELLED' },
         });
       }
 
@@ -291,7 +286,7 @@ export class SalesService {
   // ─── QUERIES ──────────────────────────────────────────────────────────────
   async getAllSales() {
     return await (this.prisma as any).sale.findMany({
-      orderBy: { createdAt: 'desc' },
+      orderBy: { created_at: 'desc' },
       include: { customer: true, items: { include: { product: true } } },
     });
   }
