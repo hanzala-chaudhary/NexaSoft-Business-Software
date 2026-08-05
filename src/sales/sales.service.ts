@@ -11,9 +11,7 @@ export class SalesService {
     if (requestUserId) return requestUserId;
 
     // Seed se bana hua Super Admin dhundo
-    const fallbackUser = await (this.prisma as any).user.findFirst({
-      orderBy: { created_at: 'asc' },
-    });
+    const fallbackUser = await (this.prisma as any).user.findFirst();
 
     if (fallbackUser) return fallbackUser.id;
 
