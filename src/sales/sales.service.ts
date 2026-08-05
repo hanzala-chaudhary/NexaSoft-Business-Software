@@ -6,18 +6,9 @@ export class SalesService {
   constructor(private prisma: PrismaService) {}
 
   async createSale(data: any) {
-    const { 
-      items, 
-      customerId, 
-      customerName, 
-      customerPhone, 
-      discount = 0, 
-      paidAmount = 0 
-    } = data;
+    const { items, customerId, customerName, customerPhone, discount = 0, paidAmount = 0 } = data;
 
-    if (!items || items.length === 0) {
-      throw new BadRequestException('Cart is empty! Koi product add nahi ki gayi.');
-    }
+    if (!items || items.length === 0) throw new BadRequestException('Cart is empty!');
 
     return await this.prisma.$transaction(async (prisma) => {
       let finalCustomerId: string | null = null;
@@ -27,22 +18,15 @@ export class SalesService {
       } else if (customerPhone || (customerName && customerName !== 'Walk-in Customer')) {
         const nameToSave = customerName || 'Unknown Customer';
         if (customerPhone) {
-          const existingCustomer = await prisma.customer.findFirst({
-            where: { phone: customerPhone },
-          });
-          if (existingCustomer) {
-            finalCustomerId = existingCustomer.id;
-          } else {
-            const newCustomer = await prisma.customer.create({
-              data: { name: nameToSave, phone: customerPhone },
-            });
-            finalCustomerId = newCustomer.id;
+          const existing = await (prisma as any).customer.findFirst({ where: { phone: customerPhone } });
+          if (existing) finalCustomerId = existing.id;
+          else {
+            const newCust = await (prisma as any).customer.create({ data: { name: nameToSave, phone: customerPhone } });
+            finalCustomerId = newCust.id;
           }
         } else {
-          const newCustomer = await prisma.customer.create({
-            data: { name: nameToSave },
-          });
-          finalCustomerId = newCustomer.id;
+          const newCust = await (prisma as any).customer.create({ data: { name: nameToSave } });
+          finalCustomerId = newCust.id;
         }
       }
 
@@ -60,62 +44,56 @@ export class SalesService {
 
       const invoiceNumber = `INV-SALE-${Date.now()}`;
 
-      // Using 'any' to bypass TS strict checking for your snake_case schema
-      const salePayload: any = {
-        invoice_number: invoiceNumber,
-        total_amount: grandTotal,
-        payment_status: dynamicPaymentStatus,
-        customer_id: finalCustomerId,
-        discount: Number(discount),
-        paid_amount: finalPaidAmount
-      };
-
-      const sale = await prisma.sale.create({ data: salePayload });
+      const sale = await (prisma as any).sale.create({
+        data: {
+          invoice_number: invoiceNumber,
+          total_amount: grandTotal, 
+          discount: Number(discount),
+          paid_amount: finalPaidAmount,
+          payment_status: dynamicPaymentStatus,
+          customer_id: finalCustomerId,
+        },
+      });
 
       for (const item of items) {
-        const product = await prisma.product.findUnique({ where: { id: item.productId } });
+        const product = await (prisma as any).product.findUnique({ where: { id: item.productId } });
         if (!product) throw new BadRequestException(`Product nahi mili!`);
+        
+        const stock = product.opening_stock ?? product.current_stock ?? 0;
+        if (Number(stock) < item.quantity) throw new BadRequestException(`Stock khatam hai!`);
 
-        if (Number((product as any).opening_stock) < item.quantity) {
-          throw new BadRequestException(`"${product.name}" ka stock khatam hai!`);
-        }
-
-        const saleItemPayload: any = {
-          sale_id: sale.id,
-          product_id: item.productId,
-          quantity: item.quantity,
-          sale_price: Number(item.salePrice),
-        };
-
-        const saleItem = await prisma.saleItem.create({ data: saleItemPayload });
+        const saleItem = await (prisma as any).saleItem.create({
+          data: {
+            sale_id: sale.id,
+            product_id: item.productId,
+            quantity: item.quantity,
+            sale_price: Number(item.salePrice),
+            unit_price: Number(item.salePrice),
+            total_price: Number(item.salePrice) * item.quantity,
+          },
+        });
 
         const parallelTasks: any[] = [
-          prisma.product.update({
+          (prisma as any).product.update({
             where: { id: item.productId },
-            data: { opening_stock: { decrement: item.quantity } } as any,
+            data: product.opening_stock !== undefined 
+                  ? { opening_stock: { decrement: item.quantity } } 
+                  : { current_stock: { decrement: item.quantity } },
           }),
-          prisma.inventoryTransaction.create({
+          (prisma as any).inventoryTransaction.create({
             data: {
               product_id: item.productId,
               type: 'SALE',
+              action: 'SALE',
               quantity: -item.quantity,
+              sale_id: sale.id,
               reference_id: sale.id,
-              notes: `Sold via POS Invoice ${invoiceNumber}`,
-            } as any,
+              notes: `Sold via POS`,
+            },
           })
         ];
 
         if (item.serialNumbers && item.serialNumbers.length > 0) {
-          const serials = await (prisma as any).serialized_products.findMany({
-            where: { serial_number: { in: item.serialNumbers }, product_id: item.productId },
-          });
-
-          for (const sn of item.serialNumbers) {
-            const serialDb = serials.find((s: any) => s.serial_number === sn);
-            if (!serialDb) throw new BadRequestException(`Serial ${sn} nahi mila!`);
-            if (serialDb.status !== 'IN_STOCK') throw new BadRequestException(`Serial ${sn} pehle hi sold hai!`);
-          }
-
           parallelTasks.push(
             (prisma as any).serialized_products.updateMany({
               where: { serial_number: { in: item.serialNumbers }, product_id: item.productId },
@@ -129,116 +107,102 @@ export class SalesService {
             })
           );
         }
-
         await Promise.all(parallelTasks);
       }
 
-      return await prisma.sale.findUnique({
+      return await (prisma as any).sale.findUnique({
         where: { id: sale.id },
-        include: {
-          customer: true,
-          items: { include: { product: true } } as any,
-          serialized_products: true,
-        } as any,
+        include: { customer: true, items: { include: { product: true } } },
       });
-    }, 
-    { maxWait: 20000, timeout: 120000 });
+    }, { maxWait: 20000, timeout: 120000 });
   }
 
   async processReturn(saleId: string, data: any) {
     const { itemsToReturn } = data;
-    if (!itemsToReturn || itemsToReturn.length === 0) throw new BadRequestException('Koi item select nahi kiya!');
+    if (!itemsToReturn || itemsToReturn.length === 0) throw new BadRequestException('Return ke liye koi item select nahi kiya!');
 
     return await this.prisma.$transaction(async (prisma) => {
       let totalRefundAmount = 0;
 
       for (const returnItem of itemsToReturn) {
-        const saleItem = await prisma.saleItem.findFirst({
-          where: { sale_id: saleId, product_id: returnItem.productId } as any,
+        const saleItem = await (prisma as any).saleItem.findFirst({
+          where: { sale_id: saleId, product_id: returnItem.productId },
         });
 
-        if (!saleItem || saleItem.quantity < returnItem.quantity) {
-          throw new BadRequestException('Invalid return quantity!');
-        }
+        if (!saleItem || saleItem.quantity < returnItem.quantity) throw new BadRequestException('Invalid return quantity!');
 
-        const refundValue = Number((saleItem as any).sale_price) * returnItem.quantity;
+        const unitPrice = saleItem.sale_price ?? saleItem.unit_price ?? 0;
+        const refundValue = Number(unitPrice) * returnItem.quantity;
         totalRefundAmount += refundValue;
 
         const returnTasks: any[] = [];
 
         if (saleItem.quantity === returnItem.quantity) {
-          returnTasks.push(prisma.saleItem.delete({ where: { id: saleItem.id } }));
+          returnTasks.push((prisma as any).saleItem.delete({ where: { id: saleItem.id } }));
         } else {
-          returnTasks.push(prisma.saleItem.update({
+          returnTasks.push((prisma as any).saleItem.update({
             where: { id: saleItem.id },
-            data: { quantity: { decrement: returnItem.quantity } },
+            data: { quantity: { decrement: returnItem.quantity }, total_price: { decrement: refundValue } },
           }));
         }
 
+        const product = await (prisma as any).product.findUnique({ where: { id: returnItem.productId } });
+        
         returnTasks.push(
-          prisma.product.update({
+          (prisma as any).product.update({
             where: { id: returnItem.productId },
-            data: { opening_stock: { increment: returnItem.quantity } } as any,
+            data: product.opening_stock !== undefined 
+                  ? { opening_stock: { increment: returnItem.quantity } }
+                  : { current_stock: { increment: returnItem.quantity } },
           }),
-          prisma.inventoryTransaction.create({
+          (prisma as any).inventoryTransaction.create({
             data: {
               product_id: returnItem.productId,
               type: 'RETURN',
+              action: 'RETURN',
               quantity: returnItem.quantity,
+              sale_id: saleId,
               reference_id: saleId,
               notes: 'Returned',
-            } as any,
+            },
           })
         );
 
         if (returnItem.serialNumbers && returnItem.serialNumbers.length > 0) {
           returnTasks.push(
             (prisma as any).serialized_products.updateMany({
-              where: { serial_number: { in: returnItem.serialNumbers }, sale_invoice_id: saleId },
-              data: {
-                status: 'IN_STOCK',
-                sale_invoice_id: null,
-                sale_item_id: null,
-                customer_id: null,
-                sale_date: null,
-              },
+              where: { serial_number: { in: returnItem.serialNumbers }, sale_item_id: saleItem.id },
+              data: { status: 'IN_STOCK', sale_item_id: null, sale_invoice_id: null, customer_id: null, sale_date: null },
             })
           );
         }
         await Promise.all(returnTasks);
       }
 
-      const updatedSale = await prisma.sale.update({
+      const updatedSale = await (prisma as any).sale.update({
         where: { id: saleId },
-        data: { 
-          total_amount: { decrement: totalRefundAmount },
-          paid_amount: { decrement: totalRefundAmount } 
-        } as any,
-        include: { items: { include: { product: true } } as any, customer: true } as any
+        data: { total_amount: { decrement: totalRefundAmount }, paid_amount: { decrement: totalRefundAmount } },
+        include: { items: { include: { product: true } }, customer: true }
       });
 
-      if (Number((updatedSale as any).total_amount) <= 0) {
-         await prisma.sale.update({
-           where: { id: saleId },
-           data: { payment_status: 'REFUNDED' } as any
-         });
+      if (Number(updatedSale.total_amount) <= 0) {
+         await (prisma as any).sale.update({ where: { id: saleId }, data: { payment_status: 'REFUNDED', order_status: 'CANCELLED' } });
       }
       return { message: "Return successful", refundAmount: totalRefundAmount, sale: updatedSale };
-    }, 
-    { maxWait: 20000, timeout: 120000 });
+    }, { maxWait: 20000, timeout: 120000 });
   }
 
   async getAllSales() {
-    return await this.prisma.sale.findMany({
-      orderBy: { created_at: 'desc' } as any,
-      include: { customer: true, items: { include: { product: true } } as any } as any,
+    return await (this.prisma as any).sale.findMany({
+      orderBy: { created_at: 'desc' },
+      include: { customer: true, items: { include: { product: true } } },
     });
   }
 
   async getSaleById(id: string) {
-    const sale = await this.prisma.sale.findUnique({
+    const sale = await (this.prisma as any).sale.findUnique({
       where: { id },
-      include: { customer: true, items: { include: { product: true } } as any, serialized_products: true } as any,
+      include: { customer: true, items: { include: { product: true } }, serialized_products: true },
     });
     if (!sale) throw new NotFoundException('Sale record nahi mila!');
     return sale;
