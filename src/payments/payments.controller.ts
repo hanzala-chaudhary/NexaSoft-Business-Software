@@ -11,9 +11,10 @@ export class PaymentsController {
   async create(@Body() body: CreatePaymentDto, @Req() req: Request) {
     try {
       const userId = (req as any).user?.id || (body as any).userId;
-      if (!userId) {
-        throw new HttpException('User authenticate nahi hua!', HttpStatus.UNAUTHORIZED);
-      }
+      // Yahan se Auth error block hata diya gaya hai
+      // if (!userId) {
+      //   throw new HttpException('User authenticate nahi hua!', HttpStatus.UNAUTHORIZED);
+      // }
       return await this.paymentsService.create({ ...body, userId });
     } catch (error: any) {
       throw new HttpException(

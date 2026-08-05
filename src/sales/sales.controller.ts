@@ -10,9 +10,10 @@ export class SalesController {
   async createSale(@Body() body: any, @Req() req: Request) {
     try {
       const userId = (req as any).user?.id || body.userId;
-      if (!userId) {
-        throw new HttpException('User authenticate nahi hua!', HttpStatus.UNAUTHORIZED);
-      }
+      // Yahan se Auth error block hata diya gaya hai
+      // if (!userId) {
+      //   throw new HttpException('User authenticate nahi hua!', HttpStatus.UNAUTHORIZED);
+      // }
       return await this.salesService.createSale({ ...body, userId });
     } catch (error: any) {
       throw new HttpException(
@@ -26,9 +27,10 @@ export class SalesController {
   async returnSale(@Param('id') id: string, @Body() body: any, @Req() req: Request) {
     try {
       const userId = (req as any).user?.id || body.userId;
-      if (!userId) {
-        throw new HttpException('User authenticate nahi hua!', HttpStatus.UNAUTHORIZED);
-      }
+      // Yahan se Auth error block hata diya gaya hai
+      // if (!userId) {
+      //   throw new HttpException('User authenticate nahi hua!', HttpStatus.UNAUTHORIZED);
+      // }
       return await this.salesService.processReturn(id, { ...body, userId });
     } catch (error: any) {
       throw new HttpException(
