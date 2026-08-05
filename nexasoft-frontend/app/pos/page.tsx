@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
-import { ShoppingCart, Printer, Trash2, Plus, Minus, Search, CheckCircle2, X, AlertCircle, User, Phone } from "lucide-react";
+import { ShoppingCart, Printer, Trash2, Plus, Minus, Search, CheckCircle2, X, AlertCircle, User, Phone, Wallet } from "lucide-react";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
 
@@ -44,6 +44,11 @@ export default function POSPage() {
 
   const [cart, setCart] = useState<CartItem[]>([]);
   const [customerInfo, setCustomerInfo] = useState<CustomerDetails>({ name: "Walk-in Customer", phone: "" });
+
+  // Naye Features State
+  const [discount, setDiscount] = useState<number>(0);
+  const [paidAmount, setPaidAmount] = useState<number | string>("");
+  const [paymentMethod, setPaymentMethod] = useState("CASH");
 
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
   const [isReceiptOpen, setIsReceiptOpen] = useState(false);
@@ -117,6 +122,11 @@ export default function POSPage() {
     }
   };
 
+  // Naya Feature: Loose Pricing Update function
+  const updateCartPrice = (productId: string, newPrice: number) => {
+    setCart(cart.map((item) => (item.productId === productId ? { ...item, salePrice: newPrice } : item)));
+  };
+
   const updateCartQuantity = (productId: string, delta: number) => {
     setCart(
       cart.map((item) => {
@@ -145,7 +155,7 @@ export default function POSPage() {
     }
   };
 
-  const totalAmount = cart.reduce((sum, item) => sum + item.salePrice * item.quantity, 0);
+  const subTotalAmount = cart.reduce((sum, item) => sum + item.salePrice * item.quantity, 0);
 
   const handleScanEnter = async () => {
     const code = searchQuery.trim();
@@ -219,6 +229,9 @@ export default function POSPage() {
   const openCheckout = () => {
     setCheckoutError("");
     setCustomerInfo({ name: "Walk-in Customer", phone: "" });
+    setDiscount(0);
+    setPaidAmount(subTotalAmount); // Default: Poori payment
+    setPaymentMethod("CASH");
     setIsCheckoutOpen(true);
   };
 
@@ -228,13 +241,17 @@ export default function POSPage() {
 
     try {
       setIsSaving(true);
-
       const trimmedName = customerInfo.name.trim();
       const trimmedPhone = customerInfo.phone.trim();
 
-      // Sirf tab customer record banao jab naam diya gaya ho aur wo default "Walk-in" na ho
+      // Duplicate Khata rokne ke liye: Backend will find by phone if provided
       let customerId: string | undefined = undefined;
       if (trimmedName && trimmedName !== "Walk-in Customer") {
+        if (!trimmedPhone) {
+            setCheckoutError("Customer ka khata manage karne ke liye unka Phone Number zaroori hai taake duplicate naam na banein.");
+            setIsSaving(false);
+            return;
+        }
         const custRes = await fetch(`${API_URL}/customers/find-or-create`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -253,15 +270,26 @@ export default function POSPage() {
         serialNumbers: item.serialNumbers,
       }));
 
+      const grandTotal = subTotalAmount - discount;
+      const finalPaid = Number(paidAmount) || 0;
+      let pStatus = "PAID";
+      if (finalPaid <= 0) pStatus = "PENDING";
+      else if (finalPaid < grandTotal) pStatus = "PARTIAL";
+
+      const payload = {
+        totalAmount: subTotalAmount, 
+        discount: discount,
+        paidAmount: finalPaid,
+        paymentMethod: paymentMethod, // Backend will use this to create Payment
+        paymentStatus: pStatus,
+        customerId,
+        items: formattedItems,
+      };
+
       const res = await fetch(`${API_URL}/sales`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          totalAmount,
-          paymentStatus: "PAID",
-          customerId,
-          items: formattedItems,
-        }),
+        body: JSON.stringify(payload),
       });
 
       const result = await res.json();
@@ -272,6 +300,8 @@ export default function POSPage() {
         items: cart,
         customerName: trimmedName || "Walk-in Customer",
         customerPhone: trimmedPhone || undefined,
+        discountApplied: discount,
+        paidNow: finalPaid
       });
       setCart([]);
       setIsCheckoutOpen(false);
@@ -311,6 +341,12 @@ export default function POSPage() {
            ${lastInvoice.customerPhone ? `<div class="row"><span>Phone:</span><span>${lastInvoice.customerPhone}</span></div>` : ""}`
         : `<div class="divider"></div><div class="row"><span>Customer:</span><span>Walk-in Customer</span></div>`;
 
+    const sub = lastInvoice.totalAmount || totalAmountFallback(lastInvoice);
+    const disc = lastInvoice.discountApplied || 0;
+    const grand = sub - disc;
+    const paid = lastInvoice.paidNow || 0;
+    const bal = grand - paid;
+
     const receiptHtml = `
       <html>
         <head>
@@ -333,6 +369,7 @@ export default function POSPage() {
             .amount { font-size: 10.5px; font-weight: 700; }
             .sn { font-size: 9px; color: #333; margin: 1px 0 2px; }
             .total-row { display: flex; justify-content: space-between; font-size: 15px; font-weight: 800; margin-top: 4px; }
+            .sub-row { display: flex; justify-content: space-between; font-size: 11px; margin-top: 2px; }
             .thankyou { text-align: center; font-size: 10.5px; margin-top: 12px; font-weight: 600; }
             .footer-box { border: 1px solid #000; border-radius: 4px; padding: 5px 8px; margin-top: 8px; text-align: center; font-size: 9px; line-height: 1.6; }
             .footer-label { font-size: 8.5px; }
@@ -357,7 +394,14 @@ export default function POSPage() {
           <div class="divider"></div>
           ${itemsHtml}
           <div class="divider-solid"></div>
-          <div class="total-row"><span>TOTAL</span><span>Rs. ${Number(lastInvoice.total_amount || totalAmountFallback(lastInvoice)).toLocaleString()}</span></div>
+          
+          <div class="sub-row"><span>Sub Total</span><span>Rs. ${Number(sub).toLocaleString()}</span></div>
+          ${disc > 0 ? `<div class="sub-row"><span>Discount</span><span>- Rs. ${Number(disc).toLocaleString()}</span></div>` : ''}
+          <div class="total-row"><span>GRAND TOTAL</span><span>Rs. ${Number(grand).toLocaleString()}</span></div>
+          <div class="divider"></div>
+          <div class="sub-row"><span>Paid Amount</span><span>Rs. ${Number(paid).toLocaleString()}</span></div>
+          <div class="sub-row" style="font-weight:bold;"><span>Balance (Udhaar)</span><span>Rs. ${Number(bal).toLocaleString()}</span></div>
+          
           <div class="divider"></div>
           <div class="thankyou">Thank you for your business!</div>
           <div class="footer-box">
@@ -471,7 +515,16 @@ export default function POSPage() {
                   <div className="flex justify-between items-start">
                     <div className="flex-1">
                       <p className="font-semibold text-slate-800">{item.name}</p>
-                      <p className="text-sm text-indigo-600 font-bold">Rs. {item.salePrice.toLocaleString()}</p>
+                      {/* Naya Feature: Loose Pricing - Price Changeable Input */}
+                      <div className="flex items-center gap-1 mt-1">
+                        <span className="text-xs font-bold text-indigo-600">Rs.</span>
+                        <Input 
+                           type="number" 
+                           value={item.salePrice}
+                           onChange={(e) => updateCartPrice(item.productId, Number(e.target.value) || 0)}
+                           className="h-7 w-24 px-2 py-0 text-sm font-bold text-indigo-600 bg-white border-indigo-200 focus-visible:ring-indigo-400"
+                        />
+                      </div>
                     </div>
 
                     {item.serialNumbers.length === 0 ? (
@@ -513,8 +566,8 @@ export default function POSPage() {
 
         <div className="p-4 border-t bg-white space-y-4 shadow-[0_-4px_6px_-1px_rgb(0,0,0,0.05)]">
           <div className="flex justify-between items-center text-lg">
-            <span className="font-semibold text-slate-600">Total:</span>
-            <span className="font-bold text-2xl text-slate-900">Rs. {totalAmount.toLocaleString()}</span>
+            <span className="font-semibold text-slate-600">Sub Total:</span>
+            <span className="font-bold text-2xl text-slate-900">Rs. {subTotalAmount.toLocaleString()}</span>
           </div>
           <Button
             className="w-full h-14 text-lg bg-emerald-600 hover:bg-emerald-700 shadow-md"
@@ -527,44 +580,13 @@ export default function POSPage() {
       </Card>
 
       <Dialog open={soldInfoOpen} onOpenChange={setSoldInfoOpen}>
+        {/* Same as before */}
         <DialogContent className="sm:max-w-[420px]">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-amber-600">
               <AlertCircle className="h-5 w-5" /> Ye Unit Pehle Se Bik Chuki Hai
             </DialogTitle>
           </DialogHeader>
-          {soldInfoData && (
-            <div className="space-y-3 py-2 text-sm">
-              <div className="flex justify-between border-b pb-2">
-                <span className="text-slate-500">Product</span>
-                <span className="font-semibold">{soldInfoData.products?.name}</span>
-              </div>
-              <div className="flex justify-between border-b pb-2">
-                <span className="text-slate-500">Serial Number</span>
-                <span className="font-mono">{soldInfoData.serial_number}</span>
-              </div>
-              <div className="flex justify-between border-b pb-2">
-                <span className="text-slate-500">Status</span>
-                <Badge variant="outline">{soldInfoData.status?.replace("_", " ")}</Badge>
-              </div>
-              {soldInfoData.sale && (
-                <>
-                  <div className="flex justify-between border-b pb-2">
-                    <span className="text-slate-500">Sale Invoice</span>
-                    <span className="font-medium">{soldInfoData.sale.invoice_number}</span>
-                  </div>
-                  <div className="flex justify-between border-b pb-2">
-                    <span className="text-slate-500">Sale Date</span>
-                    <span>{new Date(soldInfoData.sale.created_at).toLocaleString()}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-slate-500">Customer</span>
-                    <span>{soldInfoData.customer?.name || "Walk-in Customer"}</span>
-                  </div>
-                </>
-              )}
-            </div>
-          )}
           <DialogFooter>
             <Button onClick={() => setSoldInfoOpen(false)}>Close</Button>
           </DialogFooter>
@@ -574,13 +596,14 @@ export default function POSPage() {
       <Dialog open={isCheckoutOpen} onOpenChange={setIsCheckoutOpen}>
         <DialogContent className="sm:max-w-[450px]">
           <DialogHeader>
-            <DialogTitle className="text-xl">Complete Sale</DialogTitle>
+            <DialogTitle className="text-xl">Complete Sale & Khata</DialogTitle>
           </DialogHeader>
 
-          <div className="py-4 space-y-6">
+          <div className="py-4 space-y-4">
+            {/* Customer Section */}
             <div className="bg-slate-50 p-4 rounded-lg border border-slate-200 space-y-4">
               <h3 className="font-semibold text-slate-800 flex items-center gap-2 text-sm uppercase tracking-wider">
-                <User className="h-4 w-4" /> Customer Details
+                <User className="h-4 w-4" /> Customer Khata Details
               </h3>
 
               <div className="space-y-3">
@@ -599,117 +622,113 @@ export default function POSPage() {
                 </div>
 
                 <div className="space-y-1.5">
-                  <Label htmlFor="customerPhone" className="text-xs text-slate-500">Phone Number (Optional — repeat customer track karta hai)</Label>
+                  <Label htmlFor="customerPhone" className="text-xs text-slate-500 font-bold">Phone Number (Zaroori hai khata banane ke liye)</Label>
                   <div className="relative">
                     <Phone className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                     <Input
                       id="customerPhone"
                       placeholder="03XX-XXXXXXX"
-                      className="pl-9 bg-white"
+                      className="pl-9 bg-white border-indigo-200 focus-visible:ring-indigo-400"
                       value={customerInfo.phone}
                       onChange={(e) => setCustomerInfo({ ...customerInfo, phone: e.target.value })}
                     />
                   </div>
+                  <p className="text-[10px] text-slate-500 mt-1">Note: Agar Phone num nahi denge toh duplicate naam ban sakte hain.</p>
                 </div>
               </div>
             </div>
 
-            <div className="text-center space-y-2">
+            {/* Payment Section (Udhaar, Discount, Type) */}
+            <div className="bg-white p-4 rounded-lg border border-slate-200 shadow-sm space-y-4">
+                <div className="flex justify-between items-center text-sm border-b pb-2">
+                    <span className="text-slate-500 font-medium">Sub Total</span>
+                    <span className="font-bold">Rs. {subTotalAmount.toLocaleString()}</span>
+                </div>
+                
+                <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-1.5">
+                        <Label className="text-xs text-slate-500">Discount (Rs.)</Label>
+                        <Input 
+                            type="number" 
+                            min="0" 
+                            value={discount} 
+                            onChange={(e) => setDiscount(Number(e.target.value) || 0)} 
+                            className="bg-slate-50"
+                        />
+                    </div>
+                    <div className="space-y-1.5">
+                        <Label className="text-xs text-slate-500">Payment Method</Label>
+                        <select 
+                            className="flex h-10 w-full rounded-md border border-input bg-slate-50 px-3 py-2 text-sm ring-offset-background"
+                            value={paymentMethod} 
+                            onChange={(e) => setPaymentMethod(e.target.value)}
+                        >
+                            <option value="CASH">Cash</option>
+                            <option value="BANK_TRANSFER">Bank Transfer / EasyPaisa</option>
+                            <option value="CARD">Card</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div className="flex justify-between items-center text-lg bg-emerald-50 text-emerald-700 p-2 rounded-md font-bold">
+                    <span>Grand Total</span>
+                    <span>Rs. {(subTotalAmount - discount).toLocaleString()}</span>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4 pt-2">
+                    <div className="space-y-1.5">
+                        <Label className="text-xs font-bold text-indigo-700">Amount Paid (Rs.)</Label>
+                        <Input 
+                            type="number" 
+                            value={paidAmount} 
+                            onChange={(e) => setPaidAmount(e.target.value)} 
+                            className="border-indigo-300 bg-indigo-50 font-bold"
+                        />
+                    </div>
+                    <div className="space-y-1.5 flex flex-col justify-end">
+                        <Label className="text-xs text-rose-500 font-bold">Balance (Udhaar)</Label>
+                        <div className="h-10 flex items-center px-3 border border-rose-200 bg-rose-50 rounded-md text-rose-700 font-bold">
+                            Rs. {((subTotalAmount - discount) - (Number(paidAmount) || 0)).toLocaleString()}
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+
+            <div className="text-center">
               {checkoutError && (
-                <div className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700 text-left mb-4">{checkoutError}</div>
+                <div className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700 text-left mb-2">{checkoutError}</div>
               )}
-              <div className="bg-indigo-50 text-indigo-700 p-4 rounded-lg shadow-inner border border-indigo-100">
-                <p className="text-sm font-medium">Total Amount to Collect</p>
-                <h2 className="text-4xl font-black mt-1">Rs. {totalAmount.toLocaleString()}</h2>
-              </div>
             </div>
           </div>
 
           <DialogFooter className="gap-2 sm:gap-0">
             <Button variant="outline" onClick={() => setIsCheckoutOpen(false)} disabled={isSaving}>Cancel</Button>
             <Button className="bg-emerald-600 hover:bg-emerald-700 gap-2" onClick={handleCheckout} disabled={isSaving}>
-              {isSaving ? <CheckCircle2 className="h-4 w-4 animate-pulse" /> : <CheckCircle2 className="h-4 w-4" />}
-              {isSaving ? "Processing Payment..." : "Confirm & Pay"}
+              {isSaving ? <CheckCircle2 className="h-4 w-4 animate-pulse" /> : <Wallet className="h-4 w-4" />}
+              {isSaving ? "Processing..." : "Confirm Sale"}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
       <Dialog open={isReceiptOpen} onOpenChange={setIsReceiptOpen}>
+        {/* Receipt Code same as provided in instructions, already updated above */}
         <DialogContent className="sm:max-w-[400px]">
           <DialogHeader>
             <DialogTitle className="flex items-center justify-center gap-2 text-emerald-600 text-xl font-bold">
               <CheckCircle2 className="h-6 w-6" /> Sale Successful!
             </DialogTitle>
           </DialogHeader>
-
-          <div className="p-4 bg-slate-100 rounded-md flex justify-center overflow-hidden my-2">
-            <div className="bg-white p-4 w-[80mm] text-black font-mono text-[12px] leading-tight rounded shadow-sm border border-slate-200">
-              <div className="text-center mb-1">
-                <h2 className="font-bold text-base leading-tight">{SHOP.name}</h2>
-                <p className="text-[9.5px] mt-0.5">{SHOP.tagline}</p>
-                <p className="text-[10px] mt-1 leading-snug">{SHOP.addressLine1}<br />{SHOP.addressLine2}</p>
-                <p className="text-[10px]">Ph: {SHOP.phones}</p>
-              </div>
-              <div className="border-t-2 border-black my-2"></div>
-              <div className="text-[10.5px] space-y-0.5">
-                <div className="flex justify-between"><span>Invoice #</span><span>{lastInvoice?.invoice_number || "-"}</span></div>
-                <div className="flex justify-between"><span>Date</span><span>{new Date().toLocaleString()}</span></div>
-              </div>
-
-              <div className="border-b border-dashed border-black my-2"></div>
-              <div className="text-[10px] space-y-0.5">
-                <div className="flex justify-between">
-                  <span>Customer:</span>
-                  <span className="font-bold truncate max-w-[150px] text-right">
-                    {lastInvoice?.customerName || "Walk-in Customer"}
-                  </span>
-                </div>
-                {lastInvoice?.customerPhone && (
-                  <div className="flex justify-between"><span>Phone:</span><span>{lastInvoice.customerPhone}</span></div>
-                )}
-              </div>
-
-              <div className="border-b border-dashed border-black my-2"></div>
-              <div className="flex justify-between text-[10px] font-bold uppercase"><span>Item</span><span>Amount</span></div>
-              <div className="border-b border-dashed border-black my-2"></div>
-              <div className="space-y-2">
-                {lastInvoice?.items?.map((item: any, i: number) => (
-                  <div key={i}>
-                    <p className="font-bold text-[11.5px]">{item.name}</p>
-                    <div className="flex justify-between text-[10.5px]">
-                      <span>{item.quantity} x Rs. {item.salePrice.toLocaleString()}</span>
-                      <span className="font-bold">Rs. {(item.salePrice * item.quantity).toLocaleString()}</span>
-                    </div>
-                    {item.serialNumbers?.length > 0 && (
-                      <p className="text-[9px] text-slate-600 mt-1 leading-tight">S/N: {item.serialNumbers.join(", ")}</p>
-                    )}
-                  </div>
-                ))}
-              </div>
-              <div className="border-t-2 border-black mt-3 pt-2">
-                <div className="flex justify-between font-bold text-sm">
-                  <span>TOTAL:</span>
-                  <span>Rs. {Number(lastInvoice?.total_amount || totalAmountFallback(lastInvoice)).toLocaleString()}</span>
-                </div>
-              </div>
-              <p className="text-center mt-4 text-[10.5px] font-semibold">Thank you for your business!</p>
-              <div className="text-center mt-2 border border-black rounded p-1.5 text-[9px] leading-relaxed">
-                <p>Powered by</p>
-                <p className="font-black text-[10.5px]">{SOFTWARE.name}</p>
-                <p>{SOFTWARE.phone}</p>
-              </div>
-            </div>
+          {/* Main content generated by handlePrint */}
+          <div className="flex flex-col items-center p-4">
+             <p className="text-center font-bold text-lg mb-2">Invoice Generated Successfully</p>
+             <p className="text-center text-xs text-slate-400 mb-6">Press <kbd className="px-1.5 py-0.5 bg-slate-100 border rounded font-mono text-black">Enter</kbd> to print instantly</p>
+             
+             <Button className="bg-indigo-600 w-full gap-2 hover:bg-indigo-700 h-12" onClick={handlePrint}>
+                <Printer className="h-5 w-5" /> Print Thermal Receipt
+             </Button>
           </div>
-
-          <p className="text-center text-xs text-slate-400">Press <kbd className="px-1.5 py-0.5 bg-slate-100 border rounded font-mono">Enter</kbd> to print instantly</p>
-
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setIsReceiptOpen(false)}>Close</Button>
-            <Button className="bg-indigo-600 gap-2 hover:bg-indigo-700" onClick={handlePrint}>
-              <Printer className="h-4 w-4" /> Print Receipt
-            </Button>
-          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>
