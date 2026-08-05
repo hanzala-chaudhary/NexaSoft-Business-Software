@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Put, Param, Delete } from '@nestjs/common';
+import { Controller, Get, Post, Body, Put, Param, Delete, Query } from '@nestjs/common';
 import { CustomersService } from './customers.service';
 import { CreateCustomerDto } from './dto/create-customer.dto';
 import { UpdateCustomerDto } from './dto/update-customer.dto';
@@ -19,8 +19,14 @@ export class CustomersController {
   }
 
   @Get()
-  findAll() {
-    return this.customersService.findAll();
+  findAll(@Query('search') search?: string) {
+    return this.customersService.findAll(search);
+  }
+
+  // Customer ka poora khata — sales + payments + running balance
+  @Get(':id/ledger')
+  getLedger(@Param('id') id: string) {
+    return this.customersService.getLedger(id);
   }
 
   @Get(':id')

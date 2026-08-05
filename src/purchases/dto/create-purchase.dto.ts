@@ -1,4 +1,14 @@
-import { IsString, IsNotEmpty, IsNumber, IsOptional, IsArray, ValidateNested, ArrayMinSize, Min } from 'class-validator';
+import {
+  IsString,
+  IsNotEmpty,
+  IsNumber,
+  IsOptional,
+  IsArray,
+  ValidateNested,
+  ArrayMinSize,
+  Min,
+  IsIn,
+} from 'class-validator';
 import { Type } from 'class-transformer';
 
 class PurchaseItemDto {
@@ -25,16 +35,21 @@ export class CreatePurchaseDto {
   supplierId!: string;
 
   @IsNumber()
+  @IsOptional()
   @Min(0)
-  totalAmount!: number;
+  paidAmount?: number;
+
+  @IsIn(['CASH', 'BANK_TRANSFER', 'CARD', 'CHEQUE', 'OTHER'])
+  @IsOptional()
+  paymentMethod?: string;
 
   @IsString()
   @IsOptional()
-  paymentStatus?: string;
+  notes?: string;
 
   @IsArray()
   @ArrayMinSize(1, { message: 'Kam se kam ek item add karna zaroori hai!' })
   @ValidateNested({ each: true })
   @Type(() => PurchaseItemDto)
- items!: PurchaseItemDto[];
+  items!: PurchaseItemDto[];
 }

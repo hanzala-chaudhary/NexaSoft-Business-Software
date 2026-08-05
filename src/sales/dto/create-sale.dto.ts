@@ -1,4 +1,14 @@
-import { IsString, IsNotEmpty, IsNumber, IsOptional, IsArray, ValidateNested, ArrayMinSize, Min } from 'class-validator';
+import {
+  IsString,
+  IsNotEmpty,
+  IsNumber,
+  IsOptional,
+  IsArray,
+  ValidateNested,
+  ArrayMinSize,
+  Min,
+  IsIn,
+} from 'class-validator';
 import { Type } from 'class-transformer';
 
 class SaleItemDto {
@@ -24,18 +34,31 @@ export class CreateSaleDto {
   @IsOptional()
   customerId?: string;
 
-  @IsNumber()
-  @Min(0)
-  totalAmount!: number;
+  @IsString()
+  @IsOptional()
+  customerName?: string;
+
+  @IsString()
+  @IsOptional()
+  customerPhone?: string;
 
   @IsNumber()
   @IsOptional()
   @Min(0)
   discount?: number;
 
+  @IsNumber()
+  @IsOptional()
+  @Min(0)
+  paidAmount?: number;
+
+  @IsIn(['CASH', 'BANK_TRANSFER', 'CARD', 'CHEQUE', 'OTHER'])
+  @IsOptional()
+  paymentMethod?: string;
+
   @IsString()
   @IsOptional()
-  paymentStatus?: string;
+  notes?: string;
 
   @IsArray()
   @ArrayMinSize(1, { message: 'Kam se kam ek item add karna zaroori hai!' })

@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Put, Param, Delete } from '@nestjs/common';
+import { Controller, Get, Post, Body, Put, Param, Delete, Query } from '@nestjs/common';
 import { SuppliersService } from './suppliers.service';
 import { CreateSupplierDto } from './dto/create-supplier.dto';
 import { UpdateSupplierDto } from './dto/update-supplier.dto';
@@ -13,8 +13,14 @@ export class SuppliersController {
   }
 
   @Get()
-  findAll() {
-    return this.suppliersService.findAll();
+  findAll(@Query('search') search?: string) {
+    return this.suppliersService.findAll(search);
+  }
+
+  // Supplier ka poora khata — purchases + payments + running balance
+  @Get(':id/ledger')
+  getLedger(@Param('id') id: string) {
+    return this.suppliersService.getLedger(id);
   }
 
   @Get(':id')

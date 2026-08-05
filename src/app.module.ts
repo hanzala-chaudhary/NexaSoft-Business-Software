@@ -14,6 +14,7 @@ import { DashboardModule } from './dashboard/dashboard.module';
 import { BrandsModule } from './brands/brands.module';
 import { CustomersModule } from './customers/customers.module';
 import { ShiftsModule } from './shifts/shifts.module';
+import { PaymentsModule } from './payments/payments.module';
 
 @Module({
   imports: [
@@ -30,6 +31,7 @@ import { ShiftsModule } from './shifts/shifts.module';
     SerialModule,
     DashboardModule,
     ShiftsModule,
+    PaymentsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

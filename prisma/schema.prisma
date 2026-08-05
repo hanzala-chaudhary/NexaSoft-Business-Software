@@ -31,7 +31,7 @@ model User {
   avatar                              String?
   status                              user_status             @default(ACTIVE)
   is_super_admin                      Boolean                 @default(false)
-  role                                String                  @default("CASHIER") // Naya Role system add kiya gaya
+  role                                String                  @default("CASHIER")
   email_verified                      Boolean                 @default(false)
   failed_login_attempts               Int                     @default(0)
   account_locked_until                DateTime?               @db.Timestamptz(6)
@@ -50,7 +50,8 @@ model User {
   two_factor_auth                     two_factor_auth?
   user_roles                          user_roles[]
   user_sessions                       user_sessions[]
-  sales_made                          Sale[]                  // Reverse relation
+  sales_made                          Sale[]
+  payments_received                   Payment[]
   users_users_created_byTousers       User?                   @relation("users_created_byTousers", fields: [created_by], references: [id])
   other_users_users_created_byTousers User[]                  @relation("users_created_byTousers")
   users_users_deleted_byTousers       User?                   @relation("users_deleted_byTousers", fields: [deleted_by], references: [id])
@@ -180,7 +181,7 @@ model Product {
   is_active              Boolean                  @default(true)
   track_inventory        Boolean                  @default(true)
   is_serialized          Boolean                  @default(false)
-  has_variants           Boolean                  @default(false)
+  has_variants            Boolean                  @default(false)
   is_warranty_enabled    Boolean                  @default(false)
   is_returnable          Boolean                  @default(true)
   track_expiry           Boolean                  @default(false)
@@ -188,7 +189,7 @@ model Product {
   low_stock_alert        Boolean                  @default(true)
   reorder_level          Decimal                  @default(0.00) @db.Decimal(15, 4)
   opening_stock          Decimal                  @default(0.00) @db.Decimal(15, 4)
-  opening_cost           Decimal                  @default(0.00) @db.Decimal(15, 4)
+  opening_cost            Decimal                  @default(0.00) @db.Decimal(15, 4)
   sync_version           Int                      @default(1)
   sync_status            sync_status              @default(SYNCED)
   created_by             String?                  @db.Uuid
@@ -462,6 +463,7 @@ model Customer {
   updated_at          DateTime              @updatedAt @db.Timestamptz(6)
   deleted_at          DateTime?             @db.Timestamptz(6)
   sales               Sale[]
+  payments            Payment[]
   serialized_products serialized_products[]
 
   @@index([phone])
@@ -474,9 +476,11 @@ model Sale {
   tenant_id           String?               @db.Uuid
   invoice_number      String                @unique @db.VarChar(100)
   customer_id         String?               @db.Uuid
-  salesman_id         String?               @db.Uuid  
+  salesman_id         String?               @db.Uuid
   total_amount        Decimal               @default(0.00) @db.Decimal(15, 4)
   discount            Decimal               @default(0.00) @db.Decimal(15, 4)
+  paid_amount         Decimal               @default(0.00) @db.Decimal(15, 4)
+  payment_method      String                @default("CASH") @db.VarChar(50)
   payment_status      String                @db.VarChar(50)
   status              RecordStatus          @default(ACTIVE)
   sale_date           DateTime              @default(now()) @db.Timestamptz(6)
@@ -484,13 +488,15 @@ model Sale {
   updated_at          DateTime              @updatedAt @db.Timestamptz(6)
   deleted_at          DateTime?             @db.Timestamptz(6)
   customer            Customer?             @relation(fields: [customer_id], references: [id])
-  salesman            User?                 @relation(fields: [salesman_id], references: [id]) 
+  salesman            User?                 @relation(fields: [salesman_id], references: [id])
   items               SaleItem[]
+  payments            Payment[]
   serialized_products serialized_products[]
+  inventory_transactions InventoryTransaction[]
 
   @@index([tenant_id])
   @@index([customer_id])
-  @@index([salesman_id])                                       
+  @@index([salesman_id])
   @@map("sales")
 }
 
@@ -507,6 +513,7 @@ model Supplier {
   updated_at          DateTime              @updatedAt @db.Timestamptz(6)
   deleted_at          DateTime?             @db.Timestamptz(6)
   purchases           Purchase[]
+  payments            Payment[]
   serialized_products serialized_products[]
 
   @@index([phone])
@@ -520,7 +527,9 @@ model Purchase {
   invoice_number      String                @unique @db.VarChar(100)
   supplier_id         String                @db.Uuid
   total_amount        Decimal               @default(0.00) @db.Decimal(15, 4)
-  payment_status      String                @db.VarChar(50) // PAID, PARTIAL, UNPAID
+  paid_amount         Decimal               @default(0.00) @db.Decimal(15, 4)
+  payment_method      String                @default("CASH") @db.VarChar(50)
+  payment_status      String                @db.VarChar(50)
   status              RecordStatus          @default(ACTIVE)
   purchase_date       DateTime              @default(now()) @db.Timestamptz(6)
   created_at          DateTime              @default(now()) @db.Timestamptz(6)
@@ -528,7 +537,9 @@ model Purchase {
   deleted_at          DateTime?             @db.Timestamptz(6)
   supplier            Supplier              @relation(fields: [supplier_id], references: [id])
   items               PurchaseItem[]
+  payments            Payment[]
   serialized_products serialized_products[]
+  inventory_transactions InventoryTransaction[]
 
   @@index([tenant_id])
   @@index([supplier_id])
@@ -570,19 +581,55 @@ model SaleItem {
 }
 
 model InventoryTransaction {
-  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  tenant_id    String?  @db.Uuid
-  product_id   String   @db.Uuid
-  type         String   @db.VarChar(50) // PURCHASE, SALE, RETURN, ADJUSTMENT
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenant_id    String?   @db.Uuid
+  product_id   String    @db.Uuid
+  purchase_id  String?   @db.Uuid
+  sale_id      String?   @db.Uuid
+  type         String    @db.VarChar(50)
   quantity     Int
-  reference_id String?  @db.Uuid
+  reference_id String?   @db.Uuid
   notes        String?
-  created_at   DateTime @default(now()) @db.Timestamptz(6)
-  product      Product  @relation(fields: [product_id], references: [id])
+  created_at   DateTime  @default(now()) @db.Timestamptz(6)
+  product      Product   @relation(fields: [product_id], references: [id])
+  purchase     Purchase? @relation(fields: [purchase_id], references: [id], onDelete: SetNull)
+  sale         Sale?     @relation(fields: [sale_id], references: [id], onDelete: SetNull)
 
   @@index([tenant_id])
   @@index([product_id])
+  @@index([purchase_id])
+  @@index([sale_id])
   @@map("inventory_transactions")
+}
+
+model Payment {
+  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenant_id        String?   @db.Uuid
+  sale_id          String?   @db.Uuid
+  purchase_id      String?   @db.Uuid
+  customer_id      String?   @db.Uuid
+  supplier_id      String?   @db.Uuid
+  received_by      String?   @db.Uuid
+  amount           Decimal   @db.Decimal(15, 4)
+  method           String    @default("CASH") @db.VarChar(50)
+  type             String    @db.VarChar(50)
+  reference_number String?   @db.VarChar(100)
+  notes            String?
+  created_at       DateTime  @default(now()) @db.Timestamptz(6)
+  updated_at       DateTime  @updatedAt @db.Timestamptz(6)
+  deleted_at       DateTime? @db.Timestamptz(6)
+  sale             Sale?     @relation(fields: [sale_id], references: [id], onDelete: Cascade)
+  purchase         Purchase? @relation(fields: [purchase_id], references: [id], onDelete: Cascade)
+  customer         Customer? @relation(fields: [customer_id], references: [id])
+  supplier         Supplier? @relation(fields: [supplier_id], references: [id])
+  receiver         User?     @relation(fields: [received_by], references: [id])
+
+  @@index([sale_id])
+  @@index([purchase_id])
+  @@index([customer_id])
+  @@index([supplier_id])
+  @@index([tenant_id])
+  @@map("payments")
 }
 
 model serialized_products {
@@ -611,7 +658,6 @@ model serialized_products {
   updated_at           DateTime     @updatedAt @db.Timestamptz(6)
   deleted_at           DateTime?    @db.Timestamptz(6)
 
-  // Naye aur Purane Relations Linked
   products      Product       @relation(fields: [product_id], references: [id])
   purchase      Purchase?     @relation(fields: [purchase_invoice_id], references: [id])
   purchase_item PurchaseItem? @relation(fields: [purchase_item_id], references: [id])
@@ -725,12 +771,10 @@ model Shift {
   opened_by     String    @default("Admin")
   opening_time  DateTime  @default(now())
   opening_cash  Float     @default(0)
-  
   closing_time  DateTime?
-  closing_cash  Float?    
-  expected_cash Float?    
-  
-  status        String    @default("OPEN") // "OPEN" ya "CLOSED"
+  closing_cash  Float?
+  expected_cash Float?
+  status        String    @default("OPEN")
   notes         String?
 }
 

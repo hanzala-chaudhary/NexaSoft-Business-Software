@@ -1,4 +1,5 @@
-import { Controller, Post, Body, Get } from '@nestjs/common';
+import { Controller, Post, Body, Get, Param, Req, HttpException, HttpStatus } from '@nestjs/common';
+import type { Request } from 'express';
 import { PurchasesService } from './purchases.service';
 import { CreatePurchaseDto } from './dto/create-purchase.dto';
 
@@ -7,12 +8,28 @@ export class PurchasesController {
   constructor(private readonly purchasesService: PurchasesService) {}
 
   @Post()
-  createPurchase(@Body() body: CreatePurchaseDto) {
-    return this.purchasesService.createPurchase(body);
+  async createPurchase(@Body() body: CreatePurchaseDto, @Req() req: Request) {
+    try {
+      const userId = (req as any).user?.id || (body as any).userId;
+      if (!userId) {
+        throw new HttpException('User authenticate nahi hua!', HttpStatus.UNAUTHORIZED);
+      }
+      return await this.purchasesService.createPurchase({ ...body, userId });
+    } catch (error: any) {
+      throw new HttpException(
+        error.message || 'Purchase create karne mein masla pesh aaya.',
+        error.status || HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
   }
 
   @Get()
   getAllPurchases() {
     return this.purchasesService.getAllPurchases();
+  }
+
+  @Get(':id')
+  getPurchaseById(@Param('id') id: string) {
+    return this.purchasesService.getPurchaseById(id);
   }
 }

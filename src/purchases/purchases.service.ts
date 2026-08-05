@@ -1,76 +1,110 @@
-import { Injectable, BadRequestException } from '@nestjs/common';
+import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreatePurchaseDto } from './dto/create-purchase.dto';
+import { SerialStatus } from '@prisma/client';
 
 @Injectable()
 export class PurchasesService {
   constructor(private prisma: PrismaService) {}
 
-  async createPurchase(data: CreatePurchaseDto) {
+  async createPurchase(data: CreatePurchaseDto & { userId: string }) {
+    const { supplierId, userId, items, paidAmount = 0, paymentMethod = 'CASH', notes } = data as any;
+
+    if (!items || items.length === 0) throw new BadRequestException('Purchase mein kam se kam ek item hona chahiye!');
+    if (!supplierId) throw new BadRequestException('Supplier select karna zaroori hai!');
+    if (!userId) throw new BadRequestException('User identify nahi ho saka!');
+
     try {
-      // Yahan humne transaction limits barha di hain (500-600 scans ke liye safe)
-      const result = await this.prisma.$transaction(
-        async (prisma) => {
-          const purchase = await prisma.purchase.create({
+      return await this.prisma.$transaction(
+        async (tx) => {
+          const totalAmount = items.reduce(
+            (sum: number, item: any) => sum + Number(item.costPrice) * Number(item.quantity),
+            0,
+          );
+
+          const finalPaidAmount = Math.min(Number(paidAmount), totalAmount);
+
+          let paymentStatus = 'PAID';
+          if (finalPaidAmount <= 0) paymentStatus = 'PENDING';
+          else if (finalPaidAmount < totalAmount) paymentStatus = 'PARTIAL';
+
+          const invoiceNumber = `PUR-${Date.now()}`;
+
+          const purchase = await tx.purchase.create({
             data: {
-              invoice_number: `INV-${Date.now()}`,
-              supplier_id: data.supplierId,
-              total_amount: data.totalAmount,
-              payment_status: data.paymentStatus || 'UNPAID', // Ab default "PAID" nahi, safer "UNPAID"
+              invoice_number: invoiceNumber,
+              supplier_id: supplierId,
+              total_amount: totalAmount,
+              paid_amount: finalPaidAmount,
+              payment_method: paymentMethod,
+              payment_status: paymentStatus,
             },
           });
 
-          for (const item of data.items) {
-            const purchaseItem = await prisma.purchaseItem.create({
+          for (const item of items) {
+            const purchaseItem = await tx.purchaseItem.create({
               data: {
                 purchase_id: purchase.id,
                 product_id: item.productId,
                 quantity: item.quantity,
-                cost_price: item.costPrice,
+                cost_price: Number(item.costPrice),
               },
             });
 
-            await prisma.product.update({
+            await tx.product.update({
               where: { id: item.productId },
               data: {
                 opening_stock: { increment: item.quantity },
-                purchasePrice: item.costPrice,
+                purchasePrice: Number(item.costPrice),
               },
             });
 
-            await prisma.inventoryTransaction.create({
+            await tx.inventoryTransaction.create({
               data: {
                 product_id: item.productId,
+                purchase_id: purchase.id,
                 type: 'PURCHASE',
                 quantity: item.quantity,
                 reference_id: purchase.id,
-                notes: `Purchased from supplier`,
+                notes: 'Purchased from supplier',
               },
             });
 
             if (item.serialNumbers && item.serialNumbers.length > 0) {
-              const serialData = item.serialNumbers.map((serial: string) => ({
-                product_id: item.productId,
-                serial_number: serial,
-                status: 'IN_STOCK' as any,
-                purchase_invoice_id: purchase.id,
-                purchase_item_id: purchaseItem.id,
-                supplier_id: data.supplierId,
-              }));
-
-              await prisma.serialized_products.createMany({ data: serialData });
+              await tx.serialized_products.createMany({
+                data: item.serialNumbers.map((serial: string) => ({
+                  serial_number: serial,
+                  product_id: item.productId,
+                  purchase_item_id: purchaseItem.id,
+                  purchase_invoice_id: purchase.id,
+                  supplier_id: supplierId,
+                  purchase_date: new Date(),
+                  status: SerialStatus.IN_STOCK,
+                })),
+              });
             }
           }
 
-          return purchase;
-        },
-        {
-          maxWait: 20000,  // Database connection wait time (20 Seconds)
-          timeout: 120000, // Transaction complete hone ki limit (2 Minutes) - Excellent for 500+ items
-        }
-      );
+          if (finalPaidAmount > 0) {
+            await tx.payment.create({
+              data: {
+                purchase_id: purchase.id,
+                supplier_id: supplierId,
+                received_by: userId,
+                amount: finalPaidAmount,
+                method: paymentMethod,
+                type: 'PURCHASE_PAYMENT',
+              },
+            });
+          }
 
-      return result;
+          return tx.purchase.findUnique({
+            where: { id: purchase.id },
+            include: { supplier: true, items: { include: { product: true } }, payments: true },
+          });
+        },
+        { maxWait: 20000, timeout: 120000 },
+      );
     } catch (error) {
       console.error('Purchase Transaction Error:', error);
       throw new BadRequestException('Purchase save nahi ho saki! Data check karein.');
@@ -79,8 +113,22 @@ export class PurchasesService {
 
   async getAllPurchases() {
     return this.prisma.purchase.findMany({
+      where: { deleted_at: null },
       orderBy: { created_at: 'desc' },
-      include: { supplier: true, items: { include: { product: true } } },
+      include: { supplier: true, items: { include: { product: true } }, payments: true },
     });
+  }
+
+  async getPurchaseById(id: string) {
+    const purchase = await this.prisma.purchase.findUnique({
+      where: { id },
+      include: {
+        supplier: true,
+        items: { include: { product: true, serialized_products: true } },
+        payments: true,
+      },
+    });
+    if (!purchase) throw new NotFoundException('Purchase record nahi mila!');
+    return purchase;
   }
 }

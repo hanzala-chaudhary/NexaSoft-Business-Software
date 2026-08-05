@@ -1,208 +1,269 @@
 import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { SerialStatus } from '@prisma/client';
+
+interface SaleItemInput {
+  productId: string;
+  quantity: number;
+  salePrice: number;
+  serialNumbers?: string[];
+}
+
+interface CreateSaleInput {
+  items: SaleItemInput[];
+  customerId?: string;
+  customerName?: string;
+  customerPhone?: string;
+  discount?: number;
+  paidAmount?: number;
+  paymentMethod?: string; // 'CASH' | 'BANK_TRANSFER' | 'CARD' etc — plain string in this schema
+  userId: string; // salesman_id
+  notes?: string;
+}
 
 @Injectable()
 export class SalesService {
   constructor(private prisma: PrismaService) {}
 
-  async createSale(data: any) {
-    const { items, customerId, customerName, customerPhone, discount = 0, paidAmount = 0 } = data;
+  async createSale(data: CreateSaleInput) {
+    const {
+      items,
+      customerId,
+      customerName,
+      customerPhone,
+      discount = 0,
+      paidAmount = 0,
+      paymentMethod = 'CASH',
+      userId,
+      notes,
+    } = data;
 
-    if (!items || items.length === 0) throw new BadRequestException('Cart is empty!');
+    if (!items || items.length === 0) throw new BadRequestException('Cart khali hai!');
+    if (!userId) throw new BadRequestException('User (salesman) identify nahi ho saka!');
 
-    return await this.prisma.$transaction(async (prisma) => {
-      let finalCustomerId: string | null = null;
+    return this.prisma.$transaction(
+      async (tx) => {
+        // Customer resolve karo (find-or-create by phone) — duplicate khata rokne ke liye
+        let finalCustomerId: string | null = customerId ?? null;
 
-      if (customerId) {
-        finalCustomerId = customerId;
-      } else if (customerPhone || (customerName && customerName !== 'Walk-in Customer')) {
-        const nameToSave = customerName || 'Unknown Customer';
-        if (customerPhone) {
-          const existing = await (prisma as any).customer.findFirst({ where: { phone: customerPhone } });
-          if (existing) finalCustomerId = existing.id;
-          else {
-            const newCust = await (prisma as any).customer.create({ data: { name: nameToSave, phone: customerPhone } });
-            finalCustomerId = newCust.id;
+        if (!finalCustomerId && (customerPhone || (customerName && customerName !== 'Walk-in Customer'))) {
+          const nameToSave = customerName?.trim() || 'Unknown Customer';
+          if (customerPhone) {
+            const existing = await tx.customer.findFirst({
+              where: { phone: customerPhone.trim(), deleted_at: null },
+            });
+            finalCustomerId = existing
+              ? existing.id
+              : (await tx.customer.create({ data: { name: nameToSave, phone: customerPhone.trim() } })).id;
+          } else {
+            finalCustomerId = (await tx.customer.create({ data: { name: nameToSave } })).id;
           }
-        } else {
-          const newCust = await (prisma as any).customer.create({ data: { name: nameToSave } });
-          finalCustomerId = newCust.id;
         }
-      }
 
-      let calculatedSubTotal = 0;
-      for (const item of items) {
-        calculatedSubTotal += Number(item.salePrice) * Number(item.quantity);
-      }
+        // Totals calculate karo
+        const subTotal = items.reduce((sum, item) => sum + Number(item.salePrice) * Number(item.quantity), 0);
+        const grandTotal = subTotal - Number(discount);
+        if (grandTotal < 0) throw new BadRequestException('Discount total amount se zyada nahi ho sakta!');
 
-      const grandTotal = calculatedSubTotal - Number(discount);
-      const finalPaidAmount = Number(paidAmount);
-      
-      let dynamicPaymentStatus = 'PAID';
-      if (finalPaidAmount <= 0) dynamicPaymentStatus = 'PENDING';
-      else if (finalPaidAmount < grandTotal) dynamicPaymentStatus = 'PARTIAL';
+        const finalPaidAmount = Math.min(Number(paidAmount), grandTotal);
 
-      const invoiceNumber = `INV-SALE-${Date.now()}`;
+        let paymentStatus = 'PAID';
+        if (finalPaidAmount <= 0) paymentStatus = 'PENDING';
+        else if (finalPaidAmount < grandTotal) paymentStatus = 'PARTIAL';
 
-      const sale = await (prisma as any).sale.create({
-        data: {
-          invoice_number: invoiceNumber,
-          total_amount: grandTotal, 
-          discount: Number(discount),
-          paid_amount: finalPaidAmount,
-          payment_status: dynamicPaymentStatus,
-          customer_id: finalCustomerId,
-        },
-      });
+        const invoiceNumber = `INV-${Date.now()}`;
 
-      for (const item of items) {
-        const product = await (prisma as any).product.findUnique({ where: { id: item.productId } });
-        if (!product) throw new BadRequestException(`Product nahi mili!`);
-        
-        const stock = product.opening_stock ?? product.current_stock ?? 0;
-        if (Number(stock) < item.quantity) throw new BadRequestException(`Stock khatam hai!`);
-
-        const saleItem = await (prisma as any).saleItem.create({
+        const sale = await tx.sale.create({
           data: {
-            sale_id: sale.id,
-            product_id: item.productId,
-            quantity: item.quantity,
-            sale_price: Number(item.salePrice),
-            unit_price: Number(item.salePrice),
-            total_price: Number(item.salePrice) * item.quantity,
+            invoice_number: invoiceNumber,
+            total_amount: subTotal,
+            discount: Number(discount),
+            paid_amount: finalPaidAmount,
+            payment_method: paymentMethod,
+            payment_status: paymentStatus,
+            customer_id: finalCustomerId,
+            salesman_id: userId,
           },
         });
 
-        const parallelTasks: any[] = [
-          (prisma as any).product.update({
+        // Har item process karo
+        for (const item of items) {
+          const product = await tx.product.findUnique({ where: { id: item.productId } });
+          if (!product) throw new BadRequestException(`Product nahi mili: ${item.productId}`);
+
+          const currentStock = Number(product.opening_stock);
+          if (currentStock < item.quantity) {
+            throw new BadRequestException(`"${product.name}" ka sirf ${currentStock} stock available hai!`);
+          }
+
+          const saleItem = await tx.saleItem.create({
+            data: {
+              sale_id: sale.id,
+              product_id: item.productId,
+              quantity: item.quantity,
+              sale_price: Number(item.salePrice),
+            },
+          });
+
+          await tx.product.update({
             where: { id: item.productId },
-            data: product.opening_stock !== undefined 
-                  ? { opening_stock: { decrement: item.quantity } } 
-                  : { current_stock: { decrement: item.quantity } },
-          }),
-          (prisma as any).inventoryTransaction.create({
+            data: { opening_stock: { decrement: item.quantity } },
+          });
+
+          await tx.inventoryTransaction.create({
             data: {
               product_id: item.productId,
-              type: 'SALE',
-              action: 'SALE',
-              quantity: -item.quantity,
               sale_id: sale.id,
+              type: 'SALE',
+              quantity: -item.quantity,
               reference_id: sale.id,
-              notes: `Sold via POS`,
+              notes: 'Sold via POS',
             },
-          })
-        ];
+          });
 
-        if (item.serialNumbers && item.serialNumbers.length > 0) {
-          parallelTasks.push(
-            (prisma as any).serialized_products.updateMany({
+          if (item.serialNumbers && item.serialNumbers.length > 0) {
+            await tx.serialized_products.updateMany({
               where: { serial_number: { in: item.serialNumbers }, product_id: item.productId },
               data: {
-                status: 'SOLD',
+                status: SerialStatus.SOLD,
                 sale_invoice_id: sale.id,
                 sale_item_id: saleItem.id,
                 customer_id: finalCustomerId,
                 sale_date: new Date(),
               },
-            })
-          );
+            });
+          }
         }
-        await Promise.all(parallelTasks);
-      }
 
-      return await (prisma as any).sale.findUnique({
-        where: { id: sale.id },
-        include: { customer: true, items: { include: { product: true } } },
-      });
-    }, { maxWait: 20000, timeout: 120000 });
+        // Payment record banao agar kuch paid hua hai
+        if (finalPaidAmount > 0) {
+          await tx.payment.create({
+            data: {
+              sale_id: sale.id,
+              customer_id: finalCustomerId,
+              received_by: userId,
+              amount: finalPaidAmount,
+              method: paymentMethod,
+              type: 'SALE_PAYMENT',
+            },
+          });
+        }
+
+        return tx.sale.findUnique({
+          where: { id: sale.id },
+          include: {
+            customer: true,
+            items: { include: { product: true, serialized_products: true } },
+            payments: true,
+          },
+        });
+      },
+      { maxWait: 20000, timeout: 120000 },
+    );
   }
 
-  async processReturn(saleId: string, data: any) {
-    const { itemsToReturn } = data;
-    if (!itemsToReturn || itemsToReturn.length === 0) throw new BadRequestException('Return ke liye koi item select nahi kiya!');
+  async processReturn(
+    saleId: string,
+    data: { itemsToReturn: { productId: string; quantity: number; serialNumbers?: string[] }[]; userId: string },
+  ) {
+    const { itemsToReturn, userId } = data;
+    if (!itemsToReturn || itemsToReturn.length === 0) {
+      throw new BadRequestException('Return ke liye koi item select nahi kiya!');
+    }
+    if (!userId) throw new BadRequestException('User identify nahi ho saka!');
 
-    return await this.prisma.$transaction(async (prisma) => {
-      let totalRefundAmount = 0;
+    return this.prisma.$transaction(
+      async (tx) => {
+        let totalRefundAmount = 0;
 
-      for (const returnItem of itemsToReturn) {
-        const saleItem = await (prisma as any).saleItem.findFirst({
-          where: { sale_id: saleId, product_id: returnItem.productId },
-        });
+        for (const returnItem of itemsToReturn) {
+          const saleItem = await tx.saleItem.findFirst({
+            where: { sale_id: saleId, product_id: returnItem.productId },
+          });
+          if (!saleItem || saleItem.quantity < returnItem.quantity) {
+            throw new BadRequestException('Invalid return quantity!');
+          }
 
-        if (!saleItem || saleItem.quantity < returnItem.quantity) throw new BadRequestException('Invalid return quantity!');
+          const refundValue = Number(saleItem.sale_price) * returnItem.quantity;
+          totalRefundAmount += refundValue;
 
-        const unitPrice = saleItem.sale_price ?? saleItem.unit_price ?? 0;
-        const refundValue = Number(unitPrice) * returnItem.quantity;
-        totalRefundAmount += refundValue;
+          if (saleItem.quantity === returnItem.quantity) {
+            await tx.saleItem.delete({ where: { id: saleItem.id } });
+          } else {
+            await tx.saleItem.update({
+              where: { id: saleItem.id },
+              data: { quantity: { decrement: returnItem.quantity } },
+            });
+          }
 
-        const returnTasks: any[] = [];
-
-        if (saleItem.quantity === returnItem.quantity) {
-          returnTasks.push((prisma as any).saleItem.delete({ where: { id: saleItem.id } }));
-        } else {
-          returnTasks.push((prisma as any).saleItem.update({
-            where: { id: saleItem.id },
-            data: { quantity: { decrement: returnItem.quantity }, total_price: { decrement: refundValue } },
-          }));
-        }
-
-        const product = await (prisma as any).product.findUnique({ where: { id: returnItem.productId } });
-        
-        returnTasks.push(
-          (prisma as any).product.update({
+          await tx.product.update({
             where: { id: returnItem.productId },
-            data: product.opening_stock !== undefined 
-                  ? { opening_stock: { increment: returnItem.quantity } }
-                  : { current_stock: { increment: returnItem.quantity } },
-          }),
-          (prisma as any).inventoryTransaction.create({
+            data: { opening_stock: { increment: returnItem.quantity } },
+          });
+
+          await tx.inventoryTransaction.create({
             data: {
               product_id: returnItem.productId,
-              type: 'RETURN',
-              action: 'RETURN',
-              quantity: returnItem.quantity,
               sale_id: saleId,
+              type: 'RETURN',
+              quantity: returnItem.quantity,
               reference_id: saleId,
-              notes: 'Returned',
+              notes: 'Returned by customer',
             },
-          })
-        );
+          });
 
-        if (returnItem.serialNumbers && returnItem.serialNumbers.length > 0) {
-          returnTasks.push(
-            (prisma as any).serialized_products.updateMany({
+          if (returnItem.serialNumbers && returnItem.serialNumbers.length > 0) {
+            await tx.serialized_products.updateMany({
               where: { serial_number: { in: returnItem.serialNumbers }, sale_item_id: saleItem.id },
-              data: { status: 'IN_STOCK', sale_item_id: null, sale_invoice_id: null, customer_id: null, sale_date: null },
-            })
-          );
+              data: {
+                status: SerialStatus.IN_STOCK,
+                sale_item_id: null,
+                sale_invoice_id: null,
+                customer_id: null,
+                sale_date: null,
+              },
+            });
+          }
         }
-        await Promise.all(returnTasks);
-      }
 
-      const updatedSale = await (prisma as any).sale.update({
-        where: { id: saleId },
-        data: { total_amount: { decrement: totalRefundAmount }, paid_amount: { decrement: totalRefundAmount } },
-        include: { items: { include: { product: true } }, customer: true }
-      });
+        const updatedSale = await tx.sale.update({
+          where: { id: saleId },
+          data: {
+            total_amount: { decrement: totalRefundAmount },
+            paid_amount: { decrement: totalRefundAmount },
+          },
+          include: { items: { include: { product: true } }, customer: true },
+        });
 
-      if (Number(updatedSale.total_amount) <= 0) {
-         await (prisma as any).sale.update({ where: { id: saleId }, data: { payment_status: 'REFUNDED', order_status: 'CANCELLED' } });
-      }
-      return { message: "Return successful", refundAmount: totalRefundAmount, sale: updatedSale };
-    }, { maxWait: 20000, timeout: 120000 });
+        if (Number(updatedSale.total_amount) <= 0) {
+          await tx.sale.update({
+            where: { id: saleId },
+            data: { payment_status: 'REFUNDED', status: 'INACTIVE' },
+          });
+        }
+
+        return { message: 'Return successful', refundAmount: totalRefundAmount, sale: updatedSale };
+      },
+      { maxWait: 20000, timeout: 120000 },
+    );
   }
 
   async getAllSales() {
-    return await (this.prisma as any).sale.findMany({
+    return this.prisma.sale.findMany({
+      where: { deleted_at: null },
       orderBy: { created_at: 'desc' },
-      include: { customer: true, items: { include: { product: true } } },
+      include: { customer: true, items: { include: { product: true } }, payments: true },
     });
   }
 
   async getSaleById(id: string) {
-    const sale = await (this.prisma as any).sale.findUnique({
+    const sale = await this.prisma.sale.findUnique({
       where: { id },
-      include: { customer: true, items: { include: { product: true } }, serialized_products: true },
+      include: {
+        customer: true,
+        items: { include: { product: true, serialized_products: true } },
+        payments: true,
+      },
     });
     if (!sale) throw new NotFoundException('Sale record nahi mila!');
     return sale;
