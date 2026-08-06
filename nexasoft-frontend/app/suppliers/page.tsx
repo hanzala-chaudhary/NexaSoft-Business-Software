@@ -190,7 +190,8 @@ export default function SuppliersPage() {
                       <Badge variant="outline" className="font-mono">{s.totalInvoices ?? 0}</Badge>
                     </TableCell>
                     <TableCell className="text-right font-semibold text-slate-700">
-                      Rs. {Number(s.totalSpend ?? 0).toLocaleString()}
+                      {/* FIX: backend "totalPurchased" bhejta hai, "totalSpend" nahi — isi wajah se hamesha Rs. 0 dikh raha tha */}
+                      Rs. {Number(s.totalPurchased ?? 0).toLocaleString()}
                     </TableCell>
                     <TableCell className="text-right">
                       {Number(s.totalOutstanding ?? 0) > 0 ? (
