@@ -1,4 +1,5 @@
-import { Controller, Get, Post, Body, Put, Param, Delete, Query } from '@nestjs/common';
+import { Controller, Get, Post, Body, Put, Param, Delete, Query, Req } from '@nestjs/common';
+import type { Request } from 'express';
 import { CustomersService } from './customers.service';
 import { CreateCustomerDto } from './dto/create-customer.dto';
 import { UpdateCustomerDto } from './dto/update-customer.dto';
@@ -23,10 +24,40 @@ export class CustomersController {
     return this.customersService.findAll(search);
   }
 
+  // Galti se dali gayi payment reverse karo — customer.:id se pehle define taake
+  // Nest ":id" route se clash na ho
+  @Post('payments/:paymentId/void')
+  voidPayment(@Param('paymentId') paymentId: string) {
+    return this.customersService.voidPayment(paymentId);
+  }
+
   // Customer ka poora khata — sales + payments + running balance
   @Get(':id/ledger')
   getLedger(@Param('id') id: string) {
     return this.customersService.getLedger(id);
+  }
+
+  // Sirf current due balance — Dashboard/Reports isi ko call karein
+  @Get(':id/due-balance')
+  getDueBalance(@Param('id') id: string) {
+    return this.customersService.getDueBalance(id);
+  }
+
+  // Sirf payment history — date, amount, uss waqt ka remaining balance, reference
+  @Get(':id/payments')
+  getPaymentHistory(@Param('id') id: string) {
+    return this.customersService.getPaymentHistory(id);
+  }
+
+  // Bina naye sale ke, customer ke against payment record karo (partial ya poora)
+  @Post(':id/receive-payment')
+  receivePayment(
+    @Param('id') id: string,
+    @Body() body: { amount: number; method?: string; referenceNumber?: string; notes?: string; userId?: string },
+    @Req() req: Request,
+  ) {
+    const userId = (req as any).user?.id || body.userId;
+    return this.customersService.receivePayment(id, { ...body, userId });
   }
 
   @Get(':id')
