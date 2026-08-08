@@ -15,6 +15,8 @@ import { BrandsModule } from './brands/brands.module';
 import { CustomersModule } from './customers/customers.module';
 import { ShiftsModule } from './shifts/shifts.module';
 import { PaymentsModule } from './payments/payments.module';
+import { GodamModule } from "./godam/godam.module";
+
 
 @Module({
   imports: [
@@ -32,6 +34,7 @@ import { PaymentsModule } from './payments/payments.module';
     DashboardModule,
     ShiftsModule,
     PaymentsModule,
+    GodamModule,
   ],
   controllers: [AppController],
   providers: [AppService],

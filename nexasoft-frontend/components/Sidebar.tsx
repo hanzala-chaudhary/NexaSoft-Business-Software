@@ -22,6 +22,7 @@ import {
   Zap,
   Lock,
   History,
+  Boxes,
 } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -77,6 +78,12 @@ const NAV_SECTIONS: NavSection[] = [
     items: [
       { id: "shifts", label: "Shift Management", icon: Lock, href: "/shifts" },
       { id: "settings", label: "Settings", icon: Settings, href: "/settings" },
+    ],
+  },
+  {
+    title: "Godam",
+    items: [
+      { id: "godam", label: "गोदाम", icon: Boxes, href: "/godam" },
     ],
   },
 ];

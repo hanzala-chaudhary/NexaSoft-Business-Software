@@ -20,6 +20,9 @@ interface PurchaseItem {
   scanInput: string;
 }
 
+// Sales checkout jaisa hi payment method set — yahan bhi wahi rakha hai taake dono jagah consistent rahe
+const PAYMENT_METHODS = ["CASH", "BANK_TRANSFER", "CHEQUE", "CARD", "OTHER"];
+
 export default function PurchasesPage() {
   const [purchases, setPurchases] = useState<any[]>([]);
   const [suppliers, setSuppliers] = useState<any[]>([]);
@@ -32,6 +35,10 @@ export default function PurchasesPage() {
 
   const [supplierId, setSupplierId] = useState("");
   const [items, setItems] = useState<PurchaseItem[]>([]);
+
+  // NEW: payment capture state
+  const [amountPaid, setAmountPaid] = useState<string>("0");
+  const [paymentMethod, setPaymentMethod] = useState("CASH");
 
   const fetchData = async () => {
     try {
@@ -121,6 +128,28 @@ export default function PurchasesPage() {
 
   const totalAmount = items.reduce((sum, item) => sum + Number(item.quantity) * Number(item.costPrice), 0);
 
+  // NEW: derived payment numbers — sales checkout ki tarah hi balance/status nikalte hain
+  const paidNum = Math.max(0, Number(amountPaid) || 0);
+  const balanceAmount = Math.max(0, totalAmount - paidNum);
+  const derivedPaymentStatus =
+    totalAmount > 0 && paidNum >= totalAmount ? "PAID" : paidNum > 0 ? "PARTIAL" : "PENDING";
+
+  // Jab total badle (item add/remove/qty/price) aur paid amount total se zyada ho jaye,
+  // usay total tak clamp kar do taake overpaid na dikhe
+  useEffect(() => {
+    if (Number(amountPaid) > totalAmount && totalAmount > 0) {
+      setAmountPaid(String(totalAmount));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [totalAmount]);
+
+  const resetForm = () => {
+    setSupplierId("");
+    setItems([]);
+    setAmountPaid("0");
+    setPaymentMethod("CASH");
+  };
+
   const handleSavePurchase = async (e: React.FormEvent) => {
     e.preventDefault();
     setFormError("");
@@ -128,6 +157,8 @@ export default function PurchasesPage() {
     if (!supplierId) return setFormError("Supplier select karna zaroori hai!");
     if (items.length === 0) return setFormError("Kam se kam ek product add karein!");
     if (items.some((i) => !i.productId)) return setFormError("Har item ka product select karna zaroori hai!");
+    if (paidNum < 0) return setFormError("Paid amount negative nahi ho sakta!");
+    if (paidNum > totalAmount) return setFormError("Paid amount total se zyada nahi ho sakta!");
 
     try {
       setIsSaving(true);
@@ -145,7 +176,11 @@ export default function PurchasesPage() {
         body: JSON.stringify({
           supplierId,
           totalAmount,
-          paymentStatus: "PAID",
+          // FIX: pehle "PAID" hardcoded tha aur paidAmount bheja hi nahi jata tha,
+          // is wajah se backend hamesha purchase ko PENDING/0-paid maan leta tha.
+          paidAmount: paidNum,
+          paymentStatus: derivedPaymentStatus,
+          paymentMethod,
           items: formattedItems,
         }),
       });
@@ -155,13 +190,18 @@ export default function PurchasesPage() {
 
       await fetchData();
       setIsDialogOpen(false);
-      setSupplierId("");
-      setItems([]);
+      resetForm();
     } catch (error: any) {
       setFormError(error.message || "Error saving purchase!");
     } finally {
       setIsSaving(false);
     }
+  };
+
+  const statusBadgeClass = (status: string) => {
+    if (status === "PAID") return "bg-emerald-100 text-emerald-800 hover:bg-emerald-100";
+    if (status === "PARTIAL") return "bg-amber-100 text-amber-800 hover:bg-amber-100";
+    return "bg-rose-100 text-rose-800 hover:bg-rose-100";
   };
 
   return (
@@ -304,6 +344,44 @@ export default function PurchasesPage() {
                   )}
                 </div>
 
+                {/* NEW: Payment capture — sales checkout jaisa hi */}
+                <div className="space-y-4 pt-4 border-t">
+                  <Label className="text-lg font-semibold">Payment</Label>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="space-y-1">
+                      <Label>Amount Paid (Rs)</Label>
+                      <Input
+                        type="number"
+                        min="0"
+                        max={totalAmount}
+                        value={amountPaid}
+                        onChange={(e) => setAmountPaid(e.target.value)}
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label>Payment Method</Label>
+                      <select
+                        className="flex h-10 w-full rounded-md border border-input bg-white px-3 py-2 text-sm"
+                        value={paymentMethod}
+                        onChange={(e) => setPaymentMethod(e.target.value)}
+                      >
+                        {PAYMENT_METHODS.map((m) => (
+                          <option key={m} value={m}>{m.replace("_", " ")}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="space-y-1">
+                      <Label>Balance (Rs)</Label>
+                      <div className="flex h-10 w-full items-center rounded-md border border-input bg-slate-100 px-3 text-sm font-semibold text-rose-600">
+                        Rs. {balanceAmount.toLocaleString()}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex justify-end">
+                    <Badge className={statusBadgeClass(derivedPaymentStatus)}>{derivedPaymentStatus}</Badge>
+                  </div>
+                </div>
+
                 <div className="flex justify-between items-center pt-4 border-t">
                   <h3 className="text-xl font-bold">Grand Total:</h3>
                   <h3 className="text-2xl font-bold text-indigo-600">Rs. {totalAmount.toLocaleString()}</h3>
@@ -330,36 +408,51 @@ export default function PurchasesPage() {
                 <TableHead>Invoice #</TableHead>
                 <TableHead>Supplier</TableHead>
                 <TableHead>Date</TableHead>
-                <TableHead>Total Amount</TableHead>
+                <TableHead className="text-right">Total Amount</TableHead>
+                <TableHead className="text-right">Paid</TableHead>
+                <TableHead className="text-right">Balance</TableHead>
                 <TableHead>Status</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {isLoading ? (
                 <TableRow>
-                  <TableCell colSpan={5} className="h-32 text-center text-muted-foreground">
+                  <TableCell colSpan={7} className="h-32 text-center text-muted-foreground">
                     <Loader2 className="h-6 w-6 animate-spin mx-auto mb-2 text-indigo-500" />
                     Loading purchases...
                   </TableCell>
                 </TableRow>
               ) : purchases.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={5} className="h-32 text-center text-muted-foreground">
+                  <TableCell colSpan={7} className="h-32 text-center text-muted-foreground">
                     No purchase invoices found. Add your first stock!
                   </TableCell>
                 </TableRow>
               ) : (
-                purchases.map((p) => (
-                  <TableRow key={p.id}>
-                    <TableCell className="font-medium">{p.invoice_number}</TableCell>
-                    <TableCell>{p.supplier?.name} {p.supplier?.company && `(${p.supplier?.company})`}</TableCell>
-                    <TableCell>{new Date(p.created_at).toLocaleDateString()}</TableCell>
-                    <TableCell className="font-bold text-indigo-600">Rs. {Number(p.total_amount).toLocaleString()}</TableCell>
-                    <TableCell>
-                      <Badge className="bg-emerald-100 text-emerald-800 hover:bg-emerald-100">{p.payment_status}</Badge>
-                    </TableCell>
-                  </TableRow>
-                ))
+                purchases.map((p) => {
+                  const total = Number(p.total_amount ?? 0);
+                  const paid = Number(p.paid_amount ?? 0);
+                  const balance = Math.max(0, total - paid);
+                  return (
+                    <TableRow key={p.id}>
+                      <TableCell className="font-medium">{p.invoice_number}</TableCell>
+                      <TableCell>{p.supplier?.name} {p.supplier?.company && `(${p.supplier?.company})`}</TableCell>
+                      <TableCell>{new Date(p.created_at).toLocaleDateString()}</TableCell>
+                      <TableCell className="text-right font-bold text-indigo-600">Rs. {total.toLocaleString()}</TableCell>
+                      <TableCell className="text-right text-slate-700">Rs. {paid.toLocaleString()}</TableCell>
+                      <TableCell className="text-right">
+                        {balance > 0 ? (
+                          <span className="font-semibold text-rose-600">Rs. {balance.toLocaleString()}</span>
+                        ) : (
+                          <span className="text-slate-300">-</span>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        <Badge className={statusBadgeClass(p.payment_status)}>{p.payment_status}</Badge>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })
               )}
             </TableBody>
           </Table>
