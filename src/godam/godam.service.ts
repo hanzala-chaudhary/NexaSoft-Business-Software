@@ -1,9 +1,9 @@
 import { Injectable, BadRequestException, UnauthorizedException, InternalServerErrorException } from '@nestjs/common';
 import * as jwt from 'jsonwebtoken';
-import { PrismaService } from '../prisma/prisma.service'; // Ensure correct path based on your NexaSoft structure
+import { PrismaService } from '../prisma/prisma.service'; 
 
 const GODAM_TOKEN_SECRET = process.env.GODAM_TOKEN_SECRET || 'NexaSoft-Enterprise-Godam-Key-2026';
-const TOKEN_EXPIRY = '4h'; // Professional timeout window
+const TOKEN_EXPIRY = '4h'; 
 
 @Injectable()
 export class GodamService {
@@ -13,14 +13,13 @@ export class GodamService {
   // SECURITY & ACCESS MANAGEMENT
   // ==========================================
   verifyAccess(password: string) {
-    // Advanced: Using Env variable with a strong fallback for NexaSoft deployments
-    const validPassword = process.env.GODAM_ACCESS_PASSWORD || 'Tayyab123!';
+    // 🔴 BUG FIX: Client requirement exactly "Tayyab001122" without symbols
+    const validPassword = process.env.GODAM_ACCESS_PASSWORD || 'Tayyab001122';
     
     if (password !== validPassword) {
       throw new UnauthorizedException('Invalid security clearance. Incident logged.');
     }
 
-    // Creating a robust JWT payload
     const payload = {
       scope: 'godam_admin',
       authorizedAt: new Date().toISOString(),
@@ -106,49 +105,56 @@ export class GodamService {
   async getRecentStockEntries() {
     return await (this.prisma as any).godamStockEntry.findMany({ 
       orderBy: { createdAt: 'desc' }, 
-      take: 250 // Expanded ledger view
+      take: 250 
     });
   }
 
   async processStockEntry(body: any, decodedToken: any) {
-    const { productId, productName, type, quantity, unitCost, note, reason } = body;
+    const { productName, type, quantity, unitCost, note, reason } = body;
     const operator = decodedToken?.scope || 'System Admin';
 
-    if (!productId || !productName) throw new BadRequestException('Product identifier is mandatory.');
+    // 🔴 PROACTIVE FIX: Check if name is provided manually instead of depending on main shop ID
+    if (!productName || productName.trim() === '') {
+      throw new BadRequestException('Product Name is mandatory.');
+    }
+    
     if (!['IN', 'OUT', 'TRANSFER'].includes(type)) throw new BadRequestException('Invalid operation type. Must be IN, OUT, or TRANSFER.');
     if (!quantity || Number(quantity) <= 0) throw new BadRequestException('Transaction volume must be greater than zero.');
 
     const qty = Number(quantity);
     const incomingCost = Number(unitCost) || 0;
+    const cleanProductName = productName.trim();
 
     return this.prisma.$transaction(async (tx) => {
-      const existing = await (tx as any).godamStockBalance.findUnique({ where: { productId } });
+      // 🔴 PROACTIVE FIX: Godam is isolated. Match product by exact Name (case-insensitive) instead of main shop UUID
+      let existing = await (tx as any).godamStockBalance.findFirst({ 
+        where: { productName: { equals: cleanProductName, mode: 'insensitive' } } 
+      });
 
       // Pre-flight check for outwards movement
       if (['OUT', 'TRANSFER'].includes(type)) {
         const availableQty = existing?.quantity || 0;
         if (qty > availableQty) {
-          throw new BadRequestException(`Insufficient stock. Requested: ${qty}, Available: ${availableQty}`);
+          throw new BadRequestException(`Insufficient stock for "${cleanProductName}". Requested: ${qty}, Available: ${availableQty}`);
         }
       }
 
       let newQty = 0;
       let newAvgCost = 0;
       let operationValue = 0;
+      let finalProductId = existing?.productId || `GDM-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
 
       if (!existing) {
         newQty = type === 'IN' ? qty : 0;
         newAvgCost = incomingCost;
         operationValue = qty * incomingCost;
       } else if (type === 'IN') {
-        // Advanced Weighted Average Costing (Enterprise Standard)
         const totalOldValue = Number(existing.quantity) * Number(existing.avgCost);
         const totalNewValue = qty * incomingCost;
         newQty = existing.quantity + qty;
         newAvgCost = newQty > 0 ? (totalOldValue + totalNewValue) / newQty : 0;
         operationValue = totalNewValue;
       } else {
-        // OUT or TRANSFER utilizes existing average cost to determine asset reduction
         newQty = existing.quantity - qty;
         newAvgCost = Number(existing.avgCost);
         operationValue = qty * newAvgCost;
@@ -156,9 +162,9 @@ export class GodamService {
 
       // 1. Update Asset Ledger
       await (tx as any).godamStockBalance.upsert({
-        where: { productId },
-        update: { quantity: newQty, avgCost: newAvgCost, productName },
-        create: { productId, productName, quantity: newQty, avgCost: newAvgCost },
+        where: { productId: finalProductId },
+        update: { quantity: newQty, avgCost: newAvgCost, productName: cleanProductName },
+        create: { productId: finalProductId, productName: cleanProductName, quantity: newQty, avgCost: newAvgCost },
       });
 
       const entryUnitCost = type === 'IN' ? incomingCost : newAvgCost;
@@ -168,8 +174,8 @@ export class GodamService {
       // 2. Record Stock Movement
       const entry = await (tx as any).godamStockEntry.create({
         data: {
-          productId,
-          productName,
+          productId: finalProductId,
+          productName: cleanProductName,
           type: finalApiType,
           quantity: qty,
           unitCost: entryUnitCost,
@@ -183,13 +189,13 @@ export class GodamService {
       // 3. System Security Audit Log
       await this.logActivity(
         type === 'IN' ? 'STOCK_INWARD' : type === 'TRANSFER' ? 'STOCK_DISPATCH' : 'STOCK_OUTWARD',
-        `${qty}x ${productName} processed. Valuation Impact: Rs.${operationValue.toFixed(2)}. ${note ? `Remarks: ${note}` : ''}`,
+        `${qty}x ${cleanProductName} processed. Valuation Impact: Rs.${operationValue.toFixed(2)}. ${note ? `Remarks: ${note}` : ''}`,
         operator,
         tx
       );
 
       return entry;
-    }, { maxWait: 15000, timeout: 30000 }); // Enterprise transaction isolation limits
+    }, { maxWait: 15000, timeout: 30000 }); 
   }
 
   // ==========================================
@@ -286,7 +292,7 @@ export class GodamService {
   async getAuditLogs() {
     return await (this.prisma as any).godamActivityLog.findMany({ 
       orderBy: { createdAt: 'desc' }, 
-      take: 500 // Extended audit trail for high-level monitoring
+      take: 500 
     });
   }
 

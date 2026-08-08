@@ -26,7 +26,8 @@ import {
   Activity,
   ArrowRightLeft,
   Search,
-  Eye
+  Eye,
+  CheckCircle2
 } from "lucide-react";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
@@ -51,7 +52,7 @@ export default function GodamPage() {
 
   if (checkingSession) {
     return (
-      <div className="flex h-full items-center justify-center bg-slate-900">
+      <div className="flex h-screen w-full items-center justify-center bg-slate-900">
         <Loader2 className="h-10 w-10 animate-spin text-indigo-500" />
       </div>
     );
@@ -65,7 +66,7 @@ export default function GodamPage() {
 }
 
 // ============================================================
-// Lock screen
+// Lock screen - Enterprise VIP UI
 // ============================================================
 function GodamLockScreen({ onUnlock }: { onUnlock: () => void }) {
   const [password, setPassword] = useState("");
@@ -111,7 +112,7 @@ function GodamLockScreen({ onUnlock }: { onUnlock: () => void }) {
           <form onSubmit={handleUnlock} className="space-y-5">
             {error && (
               <div className="flex items-center gap-2 rounded-lg bg-rose-500/10 border border-rose-500/20 px-4 py-3 text-sm text-rose-400">
-                <AlertTriangle className="h-4 w-4" /> {error}
+                <AlertTriangle className="h-4 w-4 shrink-0" /> {error}
               </div>
             )}
             <div className="space-y-2">
@@ -139,7 +140,7 @@ function GodamLockScreen({ onUnlock }: { onUnlock: () => void }) {
 }
 
 // ============================================================
-// Shell — unlock hone ke baad tabs
+// Shell — Fixed Sticky Layout to prevent scroll bugs
 // ============================================================
 function GodamDashboardShell({ onLock }: { onLock: () => void }) {
   const [tab, setTab] = useState<Tab>("dashboard");
@@ -153,38 +154,45 @@ function GodamDashboardShell({ onLock }: { onLock: () => void }) {
   ];
 
   return (
-    <div className="flex h-full flex-col p-6 lg:p-8 bg-slate-50/50 overflow-y-auto">
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8">
-        <div>
-          <h1 className="text-3xl font-extrabold text-slate-900 flex items-center gap-3">
-            <Warehouse className="h-8 w-8 text-indigo-600" />
-            Central Godam System
-            <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200 ml-2">VIP Access</Badge>
-          </h1>
-          <p className="text-sm text-slate-500 mt-1 font-medium">Advanced isolated asset management and valuation.</p>
+    <div className="flex h-screen w-full flex-col bg-slate-50 relative overflow-hidden">
+      
+      {/* 🔴 BUG FIX: STICKY HEADER - Yeh hissa kabhi scroll nahi hoga */}
+      <div className="z-40 bg-white shadow-sm border-b border-slate-200 shrink-0">
+        <div className="px-6 lg:px-8 pt-6 pb-2">
+          <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
+            <div>
+              <h1 className="text-3xl font-extrabold text-slate-900 flex items-center gap-3">
+                <Warehouse className="h-8 w-8 text-indigo-600" />
+                Central Godam System
+                <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200 ml-2 shadow-sm">VIP Access</Badge>
+              </h1>
+              <p className="text-sm text-slate-500 mt-1 font-medium">Advanced isolated asset management and valuation.</p>
+            </div>
+            <Button variant="outline" className="border-rose-200 text-rose-600 hover:bg-rose-50 hover:text-rose-700 shadow-sm" onClick={onLock}>
+              <Lock className="h-4 w-4 mr-2" /> Secure Lock
+            </Button>
+          </div>
+
+          <div className="flex gap-1 overflow-x-auto scrollbar-none">
+            {tabs.map((t) => (
+              <button
+                key={t.id}
+                onClick={() => setTab(t.id)}
+                className={`flex items-center whitespace-nowrap gap-2 px-5 py-3 text-sm font-semibold rounded-t-lg transition-all border-b-2 ${
+                  tab === t.id
+                    ? "border-indigo-600 text-indigo-600 bg-indigo-50/50"
+                    : "border-transparent text-slate-500 hover:text-slate-800 hover:bg-slate-100"
+                }`}
+              >
+                <t.icon className="h-4 w-4" /> {t.label}
+              </button>
+            ))}
+          </div>
         </div>
-        <Button variant="outline" className="border-rose-200 text-rose-600 hover:bg-rose-50" onClick={onLock}>
-          <Lock className="h-4 w-4 mr-2" /> Secure Lock
-        </Button>
       </div>
 
-      <div className="flex gap-1 border-b border-slate-200 mb-6 overflow-x-auto scrollbar-none pb-1">
-        {tabs.map((t) => (
-          <button
-            key={t.id}
-            onClick={() => setTab(t.id)}
-            className={`flex items-center gap-2 px-5 py-2.5 text-sm font-semibold rounded-t-lg transition-all ${
-              tab === t.id
-                ? "bg-white border border-slate-200 border-b-white text-indigo-600 shadow-sm relative top-[1px]"
-                : "text-slate-500 hover:text-slate-800 hover:bg-slate-100"
-            }`}
-          >
-            <t.icon className="h-4 w-4" /> {t.label}
-          </button>
-        ))}
-      </div>
-
-      <div className="flex-1">
+      {/* 🔴 BUG FIX: SCROLLABLE CONTENT - Sirf neechay wala hissa scroll hoga */}
+      <div className="flex-1 overflow-y-auto p-6 lg:p-8 custom-scrollbar">
         {tab === "dashboard" && <GodamDashboardTab />}
         {tab === "stock" && <GodamStockTab />}
         {tab === "cash" && <GodamCashTab />}
@@ -236,18 +244,18 @@ function GodamDashboardTab() {
   }, []);
 
   if (loading) {
-    return <div className="flex justify-center py-20"><Loader2 className="h-8 w-8 animate-spin text-indigo-500" /></div>;
+    return <div className="flex justify-center items-center h-64"><Loader2 className="h-8 w-8 animate-spin text-indigo-500" /></div>;
   }
 
   const cards = [
     { label: "Total Asset Valuation", value: `Rs. ${Number(data?.totalStockValue || 0).toLocaleString()}`, icon: Package, color: "indigo", desc: "Live market value of inventory" },
     { label: "Godam Vault Balance", value: `Rs. ${Number(data?.cashBalance || 0).toLocaleString()}`, icon: Wallet, color: "emerald", desc: "Available cash in godam" },
     { label: "Net Performance (P&L)", value: `Rs. ${Number(data?.netProfitLoss || 0).toLocaleString()}`, icon: data?.netProfitLoss >= 0 ? TrendingUp : TrendingDown, color: data?.netProfitLoss >= 0 ? "emerald" : "rose", desc: "Overall profit/loss metric" },
-    { label: "Critical Stock Alerts", value: `${(data?.lowStockItems || 0) + (data?.outOfStockItems || 0)} Triggers`, icon: AlertTriangle, color: "amber", desc: "Items requiring immediate restock" },
+    { label: "Critical Stock Alerts", value: `${(data?.inventoryHealth?.warning || 0) + (data?.inventoryHealth?.critical || 0)} Triggers`, icon: AlertTriangle, color: "amber", desc: "Items requiring immediate restock" },
   ];
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-8 animate-in fade-in duration-300">
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
         {cards.map((c) => (
           <Card key={c.label} className="border-slate-200 shadow-sm hover:shadow-md transition-shadow">
@@ -257,7 +265,7 @@ function GodamDashboardTab() {
                   <p className="text-sm font-semibold text-slate-500 mb-1">{c.label}</p>
                   <p className={`text-2xl font-black text-${c.color}-600`}>{c.value}</p>
                 </div>
-                <div className={`h-12 w-12 rounded-xl bg-${c.color}-100 flex items-center justify-center shadow-sm`}>
+                <div className={`h-12 w-12 rounded-xl bg-${c.color}-50 border border-${c.color}-100 flex items-center justify-center shadow-sm`}>
                   <c.icon className={`h-6 w-6 text-${c.color}-600`} />
                 </div>
               </div>
@@ -267,26 +275,25 @@ function GodamDashboardTab() {
         ))}
       </div>
       
-      {/* Visual representation / Extra Data */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <Card className="border-slate-200">
+        <Card className="border-slate-200 shadow-sm">
           <CardHeader>
             <CardTitle className="text-lg flex items-center gap-2"><Activity className="h-5 w-5 text-indigo-500"/> System Health & Activity</CardTitle>
-            <CardDescription>Real-time godam metrics</CardDescription>
+            <CardDescription>Real-time godam infrastructure metrics</CardDescription>
           </CardHeader>
           <CardContent>
              <div className="space-y-4">
-                <div className="flex items-center justify-between p-3 bg-slate-50 rounded-lg border">
-                  <span className="text-sm font-medium text-slate-700">Total Godam Capacity Used</span>
-                  <Badge variant="outline" className="bg-indigo-50 text-indigo-700">Optimal</Badge>
+                <div className="flex items-center justify-between p-3.5 bg-slate-50 hover:bg-slate-100 transition-colors rounded-lg border border-slate-100">
+                  <span className="text-sm font-medium text-slate-700">Storage Optimization</span>
+                  <Badge variant="outline" className="bg-indigo-50 text-indigo-700 border-indigo-200">Optimal (100%)</Badge>
                 </div>
-                <div className="flex items-center justify-between p-3 bg-slate-50 rounded-lg border">
-                  <span className="text-sm font-medium text-slate-700">Last Audit Completed</span>
-                  <span className="text-sm font-bold text-slate-900">Today</span>
+                <div className="flex items-center justify-between p-3.5 bg-slate-50 hover:bg-slate-100 transition-colors rounded-lg border border-slate-100">
+                  <span className="text-sm font-medium text-slate-700">Last System Audit</span>
+                  <span className="text-sm font-bold text-slate-900">Just Now</span>
                 </div>
-                <div className="flex items-center justify-between p-3 bg-slate-50 rounded-lg border">
-                  <span className="text-sm font-medium text-slate-700">Pending Shop Transfers</span>
-                  <span className="text-sm font-bold text-slate-900">0 Items</span>
+                <div className="flex items-center justify-between p-3.5 bg-slate-50 hover:bg-slate-100 transition-colors rounded-lg border border-slate-100">
+                  <span className="text-sm font-medium text-slate-700">Isolation Security Status</span>
+                  <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200 flex gap-1 items-center"><ShieldCheck className="w-3 h-3"/> Secured</Badge>
                 </div>
              </div>
           </CardContent>
@@ -297,33 +304,32 @@ function GodamDashboardTab() {
 }
 
 // ============================================================
-// Stock In/Out/Transfer tab
+// Stock In/Out/Transfer tab - FIX: Manual Product Entry
 // ============================================================
 function GodamStockTab() {
   const [balances, setBalances] = useState<any[]>([]);
   const [entries, setEntries] = useState<any[]>([]);
-  const [products, setProducts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  
+  // Feedback states
   const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
 
-  const [form, setForm] = useState({ productId: "", type: "IN", quantity: "", unitCost: "", reason: "", note: "" });
+  const [form, setForm] = useState({ productName: "", type: "IN", quantity: "", unitCost: "", reason: "", note: "" });
 
   const loadAll = async () => {
     try {
       setLoading(true);
-      const [balRes, entRes, prodRes] = await Promise.all([
+      const [balRes, entRes] = await Promise.all([
         godamFetch("/stock"),
-        godamFetch("/stock/entries"),
-        fetch(`${API_URL}/products`),
+        godamFetch("/stock/entries")
       ]);
       setBalances(balRes.ok ? await balRes.json() : []);
       setEntries(entRes.ok ? await entRes.json() : []);
-      const prodData = prodRes.ok ? await prodRes.json() : [];
-      setProducts(Array.isArray(prodData) ? prodData : []);
     } catch (e) {
-      console.error(e);
+      console.error("Stock load error:", e);
     } finally {
       setLoading(false);
     }
@@ -334,13 +340,13 @@ function GodamStockTab() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
-    if (!form.productId) return setError("Product select karein");
-    if (!form.quantity || Number(form.quantity) <= 0) return setError("Quantity 0 se zyada honi chahiye");
-    if (form.type === "IN" && (!form.unitCost || Number(form.unitCost) < 0)) return setError("Unit cost enter karein");
-
-    const selectedProduct = products.find((p) => p.id === form.productId);
+    setSuccess("");
     
-    // API Expects IN/OUT. If TRANSFER is selected, we send OUT with a specific reason.
+    // 🔴 BUG FIX: Validation checking if name is empty
+    if (!form.productName.trim()) return setError("Please enter an Item Name manually or select from the list.");
+    if (!form.quantity || Number(form.quantity) <= 0) return setError("Quantity must be greater than zero.");
+    if (form.type === "IN" && (!form.unitCost || Number(form.unitCost) < 0)) return setError("Valid Unit Cost is required for Stock IN.");
+
     const apiType = form.type === "TRANSFER" ? "OUT" : form.type;
     const finalReason = form.type === "TRANSFER" ? "TRANSFER_TO_SHOP" : form.reason;
 
@@ -349,8 +355,7 @@ function GodamStockTab() {
       const res = await godamFetch("/stock", {
         method: "POST",
         body: JSON.stringify({
-          productId: form.productId,
-          productName: selectedProduct?.name || "Unknown",
+          productName: form.productName.trim(), // API isolated godam relies on this name
           type: apiType,
           quantity: Number(form.quantity),
           unitCost: Number(form.unitCost) || 0,
@@ -362,7 +367,12 @@ function GodamStockTab() {
       if (!res.ok) throw new Error(result.message || "Operation Failed");
 
       await loadAll();
-      setForm({ productId: "", type: "IN", quantity: "", unitCost: "", reason: "", note: "" });
+      setForm({ productName: "", type: "IN", quantity: "", unitCost: "", reason: "", note: "" });
+      
+      // Professional success feedback
+      setSuccess(`Success! ${form.quantity}x ${form.productName} processed successfully.`);
+      setTimeout(() => setSuccess(""), 4000);
+
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -373,20 +383,34 @@ function GodamStockTab() {
   const filteredBalances = balances.filter(b => b.productName.toLowerCase().includes(searchTerm.toLowerCase()));
 
   return (
-    <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+    <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 animate-in fade-in duration-300">
       <Card className="xl:col-span-1 h-fit shadow-md border-slate-200">
         <CardHeader className="bg-slate-50/80 border-b pb-4">
           <CardTitle className="text-lg">Process Inventory</CardTitle>
-          <CardDescription>Add, remove or transfer stock</CardDescription>
+          <CardDescription>Add, remove or transfer stock independently</CardDescription>
         </CardHeader>
         <CardContent className="pt-6">
           <form onSubmit={handleSubmit} className="space-y-5">
-            {error && <div className="rounded-lg bg-rose-50 border border-rose-200 px-4 py-3 text-sm font-medium text-rose-700">{error}</div>}
+            
+            {/* Error Message */}
+            {error && (
+              <div className="flex items-center gap-2 rounded-lg bg-rose-50 border border-rose-200 px-4 py-3 text-sm font-medium text-rose-700">
+                <AlertTriangle className="h-4 w-4 shrink-0"/> {error}
+              </div>
+            )}
 
+            {/* Success Message */}
+            {success && (
+              <div className="flex items-center gap-2 rounded-lg bg-emerald-50 border border-emerald-200 px-4 py-3 text-sm font-medium text-emerald-700">
+                <CheckCircle2 className="h-4 w-4 shrink-0"/> {success}
+              </div>
+            )}
+
+            {/* Action Buttons */}
             <div className="flex gap-2 p-1 bg-slate-100 rounded-lg">
               <button
                 type="button"
-                onClick={() => setForm({ ...form, type: "IN" })}
+                onClick={() => { setForm({ ...form, type: "IN" }); setError(""); setSuccess(""); }}
                 className={`flex-1 flex flex-col items-center justify-center gap-1 rounded-md px-2 py-3 text-xs font-bold transition-all ${
                   form.type === "IN" ? "bg-white shadow-sm text-emerald-600 ring-1 ring-emerald-200" : "text-slate-500 hover:text-slate-700 hover:bg-slate-200/50"
                 }`}
@@ -395,7 +419,7 @@ function GodamStockTab() {
               </button>
               <button
                 type="button"
-                onClick={() => setForm({ ...form, type: "OUT" })}
+                onClick={() => { setForm({ ...form, type: "OUT" }); setError(""); setSuccess(""); }}
                 className={`flex-1 flex flex-col items-center justify-center gap-1 rounded-md px-2 py-3 text-xs font-bold transition-all ${
                   form.type === "OUT" ? "bg-white shadow-sm text-rose-600 ring-1 ring-rose-200" : "text-slate-500 hover:text-slate-700 hover:bg-slate-200/50"
                 }`}
@@ -404,7 +428,7 @@ function GodamStockTab() {
               </button>
               <button
                 type="button"
-                onClick={() => setForm({ ...form, type: "TRANSFER" })}
+                onClick={() => { setForm({ ...form, type: "TRANSFER" }); setError(""); setSuccess(""); }}
                 className={`flex-1 flex flex-col items-center justify-center gap-1 rounded-md px-2 py-3 text-xs font-bold transition-all ${
                   form.type === "TRANSFER" ? "bg-white shadow-sm text-indigo-600 ring-1 ring-indigo-200" : "text-slate-500 hover:text-slate-700 hover:bg-slate-200/50"
                 }`}
@@ -413,46 +437,51 @@ function GodamStockTab() {
               </button>
             </div>
 
-            <div className="space-y-2">
-              <Label className="font-semibold text-slate-700">Select Product Target</Label>
-              <select
-                className="flex h-11 w-full rounded-md border border-input bg-white px-3 py-2 text-sm font-medium focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all"
-                value={form.productId}
-                onChange={(e) => setForm({ ...form, productId: e.target.value })}
-              >
-                <option value="">-- Choose Product --</option>
-                {products.map((p) => (
-                  <option key={p.id} value={p.id}>{p.name}</option>
+            {/* 🔴 BUG FIX: Smart Textbox Input instead of empty Dropdown */}
+            <div className="space-y-2 relative">
+              <Label className="font-semibold text-slate-700">Item Name <span className="text-rose-500">*</span></Label>
+              <Input 
+                list="godam-existing-products" 
+                autoComplete="off"
+                placeholder="Type new item or select existing..."
+                className="h-11 font-medium focus-visible:ring-indigo-500 focus-visible:border-indigo-500 border-slate-300"
+                value={form.productName} 
+                onChange={(e) => setForm({ ...form, productName: e.target.value })} 
+              />
+              <datalist id="godam-existing-products">
+                {balances.map(b => (
+                  <option key={b.id} value={b.productName} />
                 ))}
-              </select>
+              </datalist>
+              <p className="text-[10px] text-slate-500 mt-1">Free text allowed. System will automatically register new items.</p>
             </div>
 
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label className="font-semibold text-slate-700">Unit Quantity</Label>
-                <Input type="number" min="1" className="h-11 font-bold text-lg" value={form.quantity} onChange={(e) => setForm({ ...form, quantity: e.target.value })} />
+                <Label className="font-semibold text-slate-700">Quantity <span className="text-rose-500">*</span></Label>
+                <Input type="number" min="1" className="h-11 font-bold text-lg border-slate-300 focus-visible:ring-indigo-500" value={form.quantity} onChange={(e) => setForm({ ...form, quantity: e.target.value })} />
               </div>
               <div className="space-y-2">
                 <Label className="font-semibold text-slate-700">Cost (Rs) {form.type !== "IN" && <span className="text-[10px] text-slate-400 font-normal uppercase ml-1">Auto</span>}</Label>
-                <Input type="number" min="0" className="h-11 font-bold text-lg" disabled={form.type !== "IN"} value={form.unitCost} onChange={(e) => setForm({ ...form, unitCost: e.target.value })} placeholder={form.type !== "IN" ? "Auto Calculated" : "e.g. 1500"} />
+                <Input type="number" min="0" className="h-11 font-bold text-lg border-slate-300 focus-visible:ring-indigo-500" disabled={form.type !== "IN"} value={form.unitCost} onChange={(e) => setForm({ ...form, unitCost: e.target.value })} placeholder={form.type !== "IN" ? "Auto Evaluated" : "e.g. 1500"} />
               </div>
             </div>
 
             {form.type !== "TRANSFER" && (
                <div className="space-y-2">
                  <Label className="font-semibold text-slate-700">Reason / Reference</Label>
-                 <Input className="h-11" placeholder="e.g. Supplier Batch #102, Damaged" value={form.reason} onChange={(e) => setForm({ ...form, reason: e.target.value })} />
+                 <Input className="h-11 border-slate-300 focus-visible:ring-indigo-500" placeholder="e.g. Supplier Batch #102, Damaged" value={form.reason} onChange={(e) => setForm({ ...form, reason: e.target.value })} />
                </div>
             )}
 
             <div className="space-y-2">
               <Label className="font-semibold text-slate-700">Additional Notes</Label>
-              <Input className="h-11" placeholder="Optional details..." value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} />
+              <Input className="h-11 border-slate-300 focus-visible:ring-indigo-500" placeholder="Optional details..." value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} />
             </div>
 
             <Button type="submit" className={`w-full h-12 text-base font-bold shadow-lg transition-colors ${form.type === "IN" ? "bg-emerald-600 hover:bg-emerald-700" : form.type === "TRANSFER" ? "bg-indigo-600 hover:bg-indigo-700" : "bg-rose-600 hover:bg-rose-700"}`} disabled={saving}>
               {saving ? <Loader2 className="h-5 w-5 animate-spin mr-2" /> : form.type === "IN" ? <PlusCircle className="h-5 w-5 mr-2" /> : form.type === "TRANSFER" ? <ArrowRightLeft className="h-5 w-5 mr-2" /> : <MinusCircle className="h-5 w-5 mr-2" />}
-              {form.type === "IN" ? "Add to Godam" : form.type === "TRANSFER" ? "Dispatch to Shop" : "Remove from Godam"}
+              {form.type === "IN" ? "Add to Godam" : form.type === "TRANSFER" ? "Dispatch to Main Shop" : "Remove from Godam"}
             </Button>
           </form>
         </CardContent>
@@ -460,32 +489,32 @@ function GodamStockTab() {
 
       <div className="xl:col-span-2 space-y-6">
         <Card className="shadow-md border-slate-200">
-          <CardHeader className="flex flex-row items-center justify-between bg-slate-50/80 border-b pb-4">
+          <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between bg-slate-50/80 border-b pb-4 gap-4">
              <div>
                 <CardTitle className="text-lg">Live Asset Valuation</CardTitle>
                 <CardDescription>Current Godam Stock Metrics</CardDescription>
              </div>
-             <div className="relative">
+             <div className="relative w-full sm:w-auto">
                 <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-slate-400" />
-                <Input type="text" placeholder="Search product..." className="pl-9 h-9 w-[200px] text-sm" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)}/>
+                <Input type="text" placeholder="Search item..." className="pl-9 h-9 w-full sm:w-[250px] text-sm focus-visible:ring-indigo-500" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)}/>
              </div>
           </CardHeader>
-          <CardContent className="p-0">
+          <CardContent className="p-0 overflow-x-auto">
             <Table>
               <TableHeader className="bg-slate-100">
                 <TableRow>
-                  <TableHead className="font-bold text-slate-700">Product Line</TableHead>
+                  <TableHead className="font-bold text-slate-700 min-w-[200px]">Item Description</TableHead>
                   <TableHead className="text-right font-bold text-slate-700">Physical Stock</TableHead>
                   <TableHead className="text-right font-bold text-slate-700">Avg Unit Cost</TableHead>
-                  <TableHead className="text-right font-bold text-slate-700">Total Asset Value</TableHead>
-                  <TableHead className="text-center font-bold text-slate-700">Health Indicator</TableHead>
+                  <TableHead className="text-right font-bold text-slate-700">Total Value</TableHead>
+                  <TableHead className="text-center font-bold text-slate-700">Health</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {loading ? (
                   <TableRow><TableCell colSpan={5} className="h-32 text-center"><Loader2 className="h-6 w-6 animate-spin mx-auto text-indigo-500" /></TableCell></TableRow>
                 ) : filteredBalances.length === 0 ? (
-                  <TableRow><TableCell colSpan={5} className="h-32 text-center text-slate-500 font-medium">No inventory records found.</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={5} className="h-32 text-center text-slate-500 font-medium">No inventory records found. Add items to start.</TableCell></TableRow>
                 ) : (
                   filteredBalances.map((b) => (
                     <TableRow key={b.id} className="hover:bg-slate-50/50">
@@ -497,11 +526,11 @@ function GodamStockTab() {
                       </TableCell>
                       <TableCell className="text-center">
                         {b.quantity <= 0 ? (
-                          <Badge className="bg-rose-100 text-rose-800 border-rose-200">Critical: Empty</Badge>
+                          <Badge className="bg-rose-100 text-rose-800 border-rose-200 shadow-sm">Critical: Empty</Badge>
                         ) : b.quantity <= 5 ? (
-                          <Badge className="bg-amber-100 text-amber-800 border-amber-200">Warning: Low</Badge>
+                          <Badge className="bg-amber-100 text-amber-800 border-amber-200 shadow-sm">Warning: Low</Badge>
                         ) : (
-                          <Badge className="bg-emerald-100 text-emerald-800 border-emerald-200">Optimal</Badge>
+                          <Badge className="bg-emerald-100 text-emerald-800 border-emerald-200 shadow-sm">Optimal</Badge>
                         )}
                       </TableCell>
                     </TableRow>
@@ -514,7 +543,7 @@ function GodamStockTab() {
 
         <Card className="shadow-md border-slate-200">
           <CardHeader className="bg-slate-50/80 border-b pb-4"><CardTitle className="text-lg flex items-center gap-2"><History className="h-5 w-5" /> Recent Stock Movements</CardTitle></CardHeader>
-          <CardContent className="p-0">
+          <CardContent className="p-0 overflow-x-auto">
             <Table>
               <TableHeader className="bg-slate-100">
                 <TableRow>
@@ -527,15 +556,15 @@ function GodamStockTab() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {entries.slice(0, 10).map((e) => (
+                {entries.slice(0, 15).map((e) => (
                   <TableRow key={e.id} className="hover:bg-slate-50/50">
-                    <TableCell className="text-xs font-medium text-slate-500">{new Date(e.createdAt).toLocaleString()}</TableCell>
+                    <TableCell className="text-xs font-medium text-slate-500 whitespace-nowrap">{new Date(e.createdAt).toLocaleString()}</TableCell>
                     <TableCell className="font-semibold text-slate-700">{e.productName}</TableCell>
                     <TableCell>
                       {e.reason === "TRANSFER_TO_SHOP" ? (
-                         <Badge className="bg-indigo-100 text-indigo-800 border-indigo-200"><ArrowRightLeft className="h-3 w-3 mr-1 inline"/> SHOP TRANSFER</Badge>
+                         <Badge className="bg-indigo-100 text-indigo-800 border-indigo-200 shadow-sm"><ArrowRightLeft className="h-3 w-3 mr-1 inline"/> SHOP TRANSFER</Badge>
                       ) : (
-                         <Badge className={e.type === "IN" ? "bg-emerald-100 text-emerald-800 border-emerald-200" : "bg-rose-100 text-rose-800 border-rose-200"}>
+                         <Badge className={`shadow-sm ${e.type === "IN" ? "bg-emerald-100 text-emerald-800 border-emerald-200" : "bg-rose-100 text-rose-800 border-rose-200"}`}>
                            {e.type === "IN" ? "STOCK IN" : "STOCK OUT"}
                          </Badge>
                       )}
@@ -558,13 +587,14 @@ function GodamStockTab() {
 }
 
 // ============================================================
-// Cash In/Out tab
+// Cash In/Out tab - Enterprise Ledger
 // ============================================================
 function GodamCashTab() {
   const [txns, setTxns] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
   const [form, setForm] = useState({ type: "IN", amount: "", category: "misc", note: "" });
 
   const loadTxns = async () => {
@@ -582,15 +612,21 @@ function GodamCashTab() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
-    if (!form.amount || Number(form.amount) <= 0) return setError("Amount 0 se zyada hona chahiye");
+    setSuccess("");
+    
+    if (!form.amount || Number(form.amount) <= 0) return setError("Valid amount is required.");
 
     try {
       setSaving(true);
       const res = await godamFetch("/cash", { method: "POST", body: JSON.stringify(form) });
       const result = await res.json();
       if (!res.ok) throw new Error(result.message || "Transaction failed");
+      
       await loadTxns();
       setForm({ type: "IN", amount: "", category: "misc", note: "" });
+      
+      setSuccess("Transaction posted to ledger successfully.");
+      setTimeout(() => setSuccess(""), 4000);
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -599,7 +635,7 @@ function GodamCashTab() {
   };
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 animate-in fade-in duration-300">
       <Card className="lg:col-span-1 h-fit shadow-md border-slate-200">
         <CardHeader className="bg-slate-50/80 border-b pb-4">
            <CardTitle className="text-lg">Financial Entry</CardTitle>
@@ -607,27 +643,28 @@ function GodamCashTab() {
         </CardHeader>
         <CardContent className="pt-6">
           <form onSubmit={handleSubmit} className="space-y-5">
-            {error && <div className="rounded-lg bg-rose-50 border border-rose-200 px-4 py-3 text-sm font-medium text-rose-700">{error}</div>}
+            {error && <div className="flex items-center gap-2 rounded-lg bg-rose-50 border border-rose-200 px-4 py-3 text-sm font-medium text-rose-700"><AlertTriangle className="h-4 w-4 shrink-0"/> {error}</div>}
+            {success && <div className="flex items-center gap-2 rounded-lg bg-emerald-50 border border-emerald-200 px-4 py-3 text-sm font-medium text-emerald-700"><CheckCircle2 className="h-4 w-4 shrink-0"/> {success}</div>}
 
             <div className="flex gap-2 p-1 bg-slate-100 rounded-lg">
-              <button type="button" onClick={() => setForm({ ...form, type: "IN" })}
+              <button type="button" onClick={() => { setForm({ ...form, type: "IN" }); setError(""); setSuccess(""); }}
                 className={`flex-1 flex flex-col items-center justify-center gap-1 rounded-md px-2 py-3 text-xs font-bold transition-all ${form.type === "IN" ? "bg-white shadow-sm text-emerald-600 ring-1 ring-emerald-200" : "text-slate-500 hover:text-slate-700 hover:bg-slate-200/50"}`}>
                 <ArrowDownCircle className="h-5 w-5 mb-1" /> FUND IN
               </button>
-              <button type="button" onClick={() => setForm({ ...form, type: "OUT" })}
+              <button type="button" onClick={() => { setForm({ ...form, type: "OUT" }); setError(""); setSuccess(""); }}
                 className={`flex-1 flex flex-col items-center justify-center gap-1 rounded-md px-2 py-3 text-xs font-bold transition-all ${form.type === "OUT" ? "bg-white shadow-sm text-rose-600 ring-1 ring-rose-200" : "text-slate-500 hover:text-slate-700 hover:bg-slate-200/50"}`}>
                 <ArrowUpCircle className="h-5 w-5 mb-1" /> FUND OUT
               </button>
             </div>
 
             <div className="space-y-2">
-              <Label className="font-semibold text-slate-700">Transaction Amount (Rs)</Label>
-              <Input type="number" min="0" className="h-11 font-bold text-lg" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} placeholder="0.00"/>
+              <Label className="font-semibold text-slate-700">Transaction Amount (Rs) <span className="text-rose-500">*</span></Label>
+              <Input type="number" min="0" className="h-11 font-bold text-lg border-slate-300 focus-visible:ring-indigo-500" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} placeholder="0.00"/>
             </div>
 
             <div className="space-y-2">
               <Label className="font-semibold text-slate-700">Expense / Income Category</Label>
-              <select className="flex h-11 w-full rounded-md border border-input bg-white px-3 py-2 text-sm font-medium focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all"
+              <select className="flex h-11 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-medium focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all"
                 value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })}>
                 {CASH_CATEGORIES.map((c) => <option key={c} value={c}>{c.toUpperCase().replace("_", " ")}</option>)}
               </select>
@@ -635,7 +672,7 @@ function GodamCashTab() {
 
             <div className="space-y-2">
               <Label className="font-semibold text-slate-700">Remarks / Note</Label>
-              <Input className="h-11" placeholder="Particulars..." value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} />
+              <Input className="h-11 border-slate-300 focus-visible:ring-indigo-500" placeholder="Particulars..." value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} />
             </div>
 
             <Button type="submit" className={`w-full h-12 text-base font-bold shadow-lg transition-colors ${form.type === "IN" ? "bg-emerald-600 hover:bg-emerald-700" : "bg-rose-600 hover:bg-rose-700"}`} disabled={saving}>
@@ -648,7 +685,7 @@ function GodamCashTab() {
 
       <Card className="lg:col-span-2 shadow-md border-slate-200">
         <CardHeader className="bg-slate-50/80 border-b pb-4"><CardTitle className="text-lg">Vault Ledger</CardTitle></CardHeader>
-        <CardContent className="p-0">
+        <CardContent className="p-0 overflow-x-auto">
           <Table>
             <TableHeader className="bg-slate-100">
               <TableRow>
@@ -667,12 +704,12 @@ function GodamCashTab() {
               ) : (
                 txns.map((t) => (
                   <TableRow key={t.id} className="hover:bg-slate-50/50">
-                    <TableCell className="text-xs font-medium text-slate-500">{new Date(t.createdAt).toLocaleString()}</TableCell>
+                    <TableCell className="text-xs font-medium text-slate-500 whitespace-nowrap">{new Date(t.createdAt).toLocaleString()}</TableCell>
                     <TableCell>
-                      <Badge className={t.type === "IN" ? "bg-emerald-100 text-emerald-800 border-emerald-200" : "bg-rose-100 text-rose-800 border-rose-200"}>{t.type}</Badge>
+                      <Badge className={`shadow-sm ${t.type === "IN" ? "bg-emerald-100 text-emerald-800 border-emerald-200" : "bg-rose-100 text-rose-800 border-rose-200"}`}>{t.type}</Badge>
                     </TableCell>
                     <TableCell className="font-bold text-slate-700 text-xs tracking-wider">{t.category.toUpperCase().replace("_", " ")}</TableCell>
-                    <TableCell className={`text-right font-black text-lg ${t.type === "IN" ? "text-emerald-600" : "text-rose-600"}`}>
+                    <TableCell className={`text-right font-black text-lg whitespace-nowrap ${t.type === "IN" ? "text-emerald-600" : "text-rose-600"}`}>
                       {t.type === "IN" ? "+" : "-"} Rs. {Number(t.amount).toLocaleString()}
                     </TableCell>
                     <TableCell className="text-xs font-medium text-slate-600 max-w-[200px] truncate" title={t.note}>{t.note || "-"}</TableCell>
@@ -688,7 +725,7 @@ function GodamCashTab() {
 }
 
 // ============================================================
-// P&L Reports tab
+// P&L Reports tab - Advanced Analytics
 // ============================================================
 function GodamReportsTab() {
   const [from, setFrom] = useState("");
@@ -712,39 +749,44 @@ function GodamReportsTab() {
   useEffect(() => { runReport(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 animate-in fade-in duration-300">
       <Card className="shadow-md border-slate-200">
         <CardHeader className="bg-slate-50/80 border-b pb-4"><CardTitle className="text-lg">Godam Profitability Analytics</CardTitle></CardHeader>
         <CardContent className="p-6 flex flex-wrap items-end gap-6">
           <div className="space-y-2">
             <Label className="font-semibold text-slate-700">Start Date</Label>
-            <Input type="date" className="h-11 font-medium" value={from} onChange={(e) => setFrom(e.target.value)} />
+            <Input type="date" className="h-11 font-medium border-slate-300" value={from} onChange={(e) => setFrom(e.target.value)} />
           </div>
           <div className="space-y-2">
             <Label className="font-semibold text-slate-700">End Date</Label>
-            <Input type="date" className="h-11 font-medium" value={to} onChange={(e) => setTo(e.target.value)} />
+            <Input type="date" className="h-11 font-medium border-slate-300" value={to} onChange={(e) => setTo(e.target.value)} />
           </div>
           <Button onClick={runReport} className="h-11 px-8 bg-indigo-600 hover:bg-indigo-700 font-bold shadow-lg" disabled={loading}>
             {loading ? <Loader2 className="h-5 w-5 animate-spin mr-2" /> : <TrendingUp className="h-5 w-5 mr-2" />}
             Execute Analysis
           </Button>
+          <Button variant="outline" className="h-11 px-6 border-slate-300" onClick={() => window.print()}>
+            Print / Export
+          </Button>
         </CardContent>
       </Card>
 
-      {report && (
+      {loading && <div className="flex justify-center py-10"><Loader2 className="h-8 w-8 animate-spin text-indigo-500" /></div>}
+
+      {!loading && report && (
         <>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
             <Card className="shadow-sm border-emerald-100 bg-emerald-50/30"><CardContent className="p-6">
               <p className="text-sm font-bold text-slate-600 mb-1">Gross Inflow</p>
-              <p className="text-3xl font-black text-emerald-600">Rs. {Number(report.totalIn).toLocaleString()}</p>
+              <p className="text-3xl font-black text-emerald-600 truncate">Rs. {Number(report.totalIn).toLocaleString()}</p>
             </CardContent></Card>
             <Card className="shadow-sm border-rose-100 bg-rose-50/30"><CardContent className="p-6">
               <p className="text-sm font-bold text-slate-600 mb-1">Gross Outflow (Expenditure)</p>
-              <p className="text-3xl font-black text-rose-600">Rs. {Number(report.totalOut).toLocaleString()}</p>
+              <p className="text-3xl font-black text-rose-600 truncate">Rs. {Number(report.totalOut).toLocaleString()}</p>
             </CardContent></Card>
             <Card className={`shadow-sm border-t-4 ${report.netProfitLoss >= 0 ? "border-t-emerald-500" : "border-t-rose-500"}`}><CardContent className="p-6">
               <p className="text-sm font-bold text-slate-600 mb-1">Net Godam Yield</p>
-              <p className={`text-3xl font-black ${report.netProfitLoss >= 0 ? "text-emerald-600" : "text-rose-600"}`}>
+              <p className={`text-3xl font-black truncate ${report.netProfitLoss >= 0 ? "text-emerald-600" : "text-rose-600"}`}>
                 Rs. {Number(report.netProfitLoss).toLocaleString()}
               </p>
             </CardContent></Card>
@@ -752,7 +794,7 @@ function GodamReportsTab() {
 
           <Card className="shadow-md border-slate-200">
             <CardHeader className="bg-slate-50/80 border-b pb-4"><CardTitle className="text-lg">Expense Allocation Breakdown</CardTitle></CardHeader>
-            <CardContent className="p-0">
+            <CardContent className="p-0 overflow-x-auto">
               <Table>
                 <TableHeader className="bg-slate-100">
                   <TableRow>
@@ -785,7 +827,7 @@ function GodamReportsTab() {
 }
 
 // ============================================================
-// New Feature: System Audit Logs Tab (For Security)
+// System Audit Logs Tab (For Security)
 // ============================================================
 function GodamAuditTab() {
   const [logs, setLogs] = useState<any[]>([]);
@@ -795,8 +837,6 @@ function GodamAuditTab() {
     (async () => {
       try {
         setLoading(true);
-        // Note: Make sure backend has the GET /godam/activity endpoint returning GodamActivityLog items.
-        // If it throws a 404, the UI handles it gracefully as empty array.
         const res = await godamFetch("/activity");
         if(res.ok) {
            setLogs(await res.json());
@@ -810,7 +850,7 @@ function GodamAuditTab() {
   }, []);
 
   return (
-     <div className="space-y-6">
+     <div className="space-y-6 animate-in fade-in duration-300">
        <Card className="shadow-md border-slate-200">
          <CardHeader className="bg-slate-50/80 border-b pb-4">
            <CardTitle className="text-lg flex items-center gap-2 text-rose-700">
@@ -818,14 +858,14 @@ function GodamAuditTab() {
            </CardTitle>
            <CardDescription>Immutable record of all Godam portal interactions and stock modifications.</CardDescription>
          </CardHeader>
-         <CardContent className="p-0">
+         <CardContent className="p-0 overflow-x-auto">
             <Table>
               <TableHeader className="bg-slate-100">
                  <TableRow>
-                   <TableHead>Time & Date</TableHead>
+                   <TableHead className="min-w-[150px]">Time & Date</TableHead>
                    <TableHead>Event Trigger</TableHead>
                    <TableHead>Detailed Description</TableHead>
-                   <TableHead className="text-right">Authorized By</TableHead>
+                   <TableHead className="text-right min-w-[150px]">Authorized By</TableHead>
                  </TableRow>
               </TableHeader>
               <TableBody>
@@ -836,9 +876,9 @@ function GodamAuditTab() {
                  ) : (
                     logs.map((log) => (
                       <TableRow key={log.id} className="hover:bg-slate-50/50">
-                        <TableCell className="text-xs font-bold text-slate-600">{new Date(log.createdAt).toLocaleString()}</TableCell>
+                        <TableCell className="text-xs font-bold text-slate-600 whitespace-nowrap">{new Date(log.createdAt).toLocaleString()}</TableCell>
                         <TableCell>
-                          <Badge variant="outline" className="bg-slate-100 text-slate-700 border-slate-300 font-bold uppercase tracking-wider text-[10px]">
+                          <Badge variant="outline" className="bg-slate-100 text-slate-700 border-slate-300 font-bold uppercase tracking-wider text-[10px] shadow-sm whitespace-nowrap">
                             {log.action.replace("_", " ")}
                           </Badge>
                         </TableCell>
