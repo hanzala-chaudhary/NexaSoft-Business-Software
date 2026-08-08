@@ -1,81 +1,73 @@
-import { Controller, Get, Post, Body, Req, Query, UnauthorizedException, BadRequestException } from '@nestjs/common';
+import { Controller, Get, Post, Body, Req, Query, UnauthorizedException, Headers, HttpException, HttpStatus } from '@nestjs/common';
 import { GodamService } from './godam.service';
-import type { Request } from 'express';
 
 @Controller('godam')
 export class GodamController {
   constructor(private readonly godamService: GodamService) {}
 
-  // 🔒 GODAM PASSWORD LOCK
+  // 🔐 Advanced Authentication Gateway
   @Post('verify-access')
-  verifyAccess(@Body() body: { password: string }) {
-    // 👇 Yahan aap apni marzi ka password set kar sakte hain
-    const GODAM_SECRET_PASSWORD = 'Tayyab123!'; 
-
-    if (body.password === GODAM_SECRET_PASSWORD) {
-      return { token: 'godam-vip-secure-token-786', message: 'Access Granted' };
+  async verifyAccess(@Body('password') password: string) {
+    if (!password) {
+      throw new HttpException('Security key is required for access.', HttpStatus.BAD_REQUEST);
     }
-    throw new UnauthorizedException('Galat Password! Access Denied.');
+    return await this.godamService.verifyAccess(password);
   }
 
-  // 🛡️ SECURITY CHECK FOR ALL ROUTES
-  private checkAccess(req: Request) {
-    const token = req.headers['x-godam-token'];
-    if (token !== 'godam-vip-secure-token-786') {
-      throw new UnauthorizedException('Godam session expired ya unauthorized.');
-    }
-  }
-
-  // 📊 DASHBOARD METRICS
+  // 📊 Executive Dashboard Analytics
   @Get('dashboard')
-  async getDashboard(@Req() req: Request) {
-    this.checkAccess(req);
+  async getDashboard(@Headers('x-godam-token') token: string) {
+    this.godamService.verifyToken(token);
     return await this.godamService.getDashboardMetrics();
   }
 
-  // 📦 STOCK ROUTES
+  // 📦 Inventory & Valuation Endpoints
   @Get('stock')
-  async getStockBalances(@Req() req: Request) {
-    this.checkAccess(req);
+  async getStockBalances(@Headers('x-godam-token') token: string) {
+    this.godamService.verifyToken(token);
     return await this.godamService.getAllStockBalances();
   }
 
-  @Post('stock')
-  async processStock(@Req() req: Request, @Body() body: any) {
-    this.checkAccess(req);
-    return await this.godamService.processStockEntry(body);
-  }
-
   @Get('stock/entries')
-  async getStockEntries(@Req() req: Request) {
-    this.checkAccess(req);
+  async getStockEntries(@Headers('x-godam-token') token: string) {
+    this.godamService.verifyToken(token);
     return await this.godamService.getRecentStockEntries();
   }
 
-  // 💰 CASH ROUTES
+  @Post('stock')
+  async processStockEntry(@Headers('x-godam-token') token: string, @Body() body: any) {
+    const decodedToken = this.godamService.verifyToken(token);
+    return await this.godamService.processStockEntry(body, decodedToken);
+  }
+
+  // 💰 Financial Ledger Endpoints
   @Get('cash')
-  async getCashLedger(@Req() req: Request) {
-    this.checkAccess(req);
+  async getCashLedger(@Headers('x-godam-token') token: string) {
+    this.godamService.verifyToken(token);
     return await this.godamService.getCashTransactions();
   }
 
   @Post('cash')
-  async processCash(@Req() req: Request, @Body() body: any) {
-    this.checkAccess(req);
-    return await this.godamService.processCashTransaction(body);
+  async processCashTransaction(@Headers('x-godam-token') token: string, @Body() body: any) {
+    const decodedToken = this.godamService.verifyToken(token);
+    return await this.godamService.processCashTransaction(body, decodedToken);
   }
 
-  // 📈 P&L REPORTS
+  // 📈 Advanced Analytics & Reporting
   @Get('reports/pnl')
-  async getPnLReport(@Req() req: Request, @Query('from') from: string, @Query('to') to: string) {
-    this.checkAccess(req);
+  async getPnlReport(
+    @Headers('x-godam-token') token: string, 
+    @Query('from') from?: string, 
+    @Query('to') to?: string
+  ) {
+    this.godamService.verifyToken(token);
     return await this.godamService.generatePnLReport(from, to);
   }
 
-  // 🕵️ AUDIT LOGS (Security Feature)
+  // 🕵️ System Audit & Security Logs
   @Get('activity')
-  async getAuditLogs(@Req() req: Request) {
-    this.checkAccess(req);
+  async getActivityLogs(@Headers('x-godam-token') token: string) {
+    this.godamService.verifyToken(token);
     return await this.godamService.getAuditLogs();
   }
 }

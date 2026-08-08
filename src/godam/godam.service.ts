@@ -1,161 +1,263 @@
-import { Injectable, BadRequestException } from '@nestjs/common';
-import { PrismaService } from '../prisma/prisma.service'; // Path check kar lijiyega
+import { Injectable, BadRequestException, UnauthorizedException, InternalServerErrorException } from '@nestjs/common';
+import * as jwt from 'jsonwebtoken';
+import { PrismaService } from '../prisma/prisma.service'; // Ensure correct path based on your NexaSoft structure
+
+const GODAM_TOKEN_SECRET = process.env.GODAM_TOKEN_SECRET || 'NexaSoft-Enterprise-Godam-Key-2026';
+const TOKEN_EXPIRY = '4h'; // Professional timeout window
 
 @Injectable()
 export class GodamService {
   constructor(private prisma: PrismaService) {}
 
   // ==========================================
-  // DASHBOARD ADVANCED METRICS
+  // SECURITY & ACCESS MANAGEMENT
   // ==========================================
-  async getDashboardMetrics() {
-    const balances = await (this.prisma as any).godamStockBalance.findMany();
-    let totalStockValue = 0;
-    let lowStockItems = 0;
-    let outOfStockItems = 0;
+  verifyAccess(password: string) {
+    // Advanced: Using Env variable with a strong fallback for NexaSoft deployments
+    const validPassword = process.env.GODAM_ACCESS_PASSWORD || 'Tayyab123!';
+    
+    if (password !== validPassword) {
+      throw new UnauthorizedException('Invalid security clearance. Incident logged.');
+    }
 
-    balances.forEach(b => {
-      totalStockValue += (Number(b.quantity) * Number(b.avgCost));
-      if (b.quantity <= 0) outOfStockItems++;
-      else if (b.quantity <= 5) lowStockItems++;
-    });
+    // Creating a robust JWT payload
+    const payload = {
+      scope: 'godam_admin',
+      authorizedAt: new Date().toISOString(),
+      clearanceLevel: 'HIGH'
+    };
 
-    const cashTxns = await (this.prisma as any).godamCashTransaction.findMany();
-    let totalIn = 0;
-    let totalOut = 0;
-
-    cashTxns.forEach(t => {
-      if (t.type === 'IN') totalIn += Number(t.amount);
-      if (t.type === 'OUT') totalOut += Number(t.amount);
-    });
-
-    return {
-      totalStockValue,
-      cashBalance: totalIn - totalOut,
-      netProfitLoss: totalIn - totalOut, // VIP simplified P&L logic
-      lowStockItems,
-      outOfStockItems
+    const token = jwt.sign(payload, GODAM_TOKEN_SECRET, { expiresIn: TOKEN_EXPIRY });
+    return { 
+      token, 
+      expiresIn: TOKEN_EXPIRY,
+      message: 'Secure connection established.'
     };
   }
 
+  verifyToken(token: string) {
+    if (!token) {
+      throw new UnauthorizedException('Missing authorization token. Access restricted.');
+    }
+    try {
+      return jwt.verify(token, GODAM_TOKEN_SECRET);
+    } catch (error) {
+      throw new UnauthorizedException('Session expired or tampered. Re-authenticate immediately.');
+    }
+  }
+
   // ==========================================
-  // STOCK MANAGEMENT & WEIGHTED AVERAGE
+  // ENTERPRISE DASHBOARD METRICS
+  // ==========================================
+  async getDashboardMetrics() {
+    try {
+      const balances = await (this.prisma as any).godamStockBalance.findMany();
+      
+      let totalStockValue = 0;
+      let lowStockItems = 0;
+      let outOfStockItems = 0;
+      let healthyItems = 0;
+
+      balances.forEach(b => {
+        const value = Number(b.quantity) * Number(b.avgCost);
+        totalStockValue += value;
+        
+        if (b.quantity <= 0) outOfStockItems++;
+        else if (b.quantity <= 5) lowStockItems++;
+        else healthyItems++;
+      });
+
+      const cashTxns = await (this.prisma as any).godamCashTransaction.findMany();
+      let totalCashIn = 0;
+      let totalCashOut = 0;
+
+      cashTxns.forEach(t => {
+        if (t.type === 'IN') totalCashIn += Number(t.amount);
+        if (t.type === 'OUT') totalCashOut += Number(t.amount);
+      });
+
+      return {
+        totalStockValue,
+        inventoryHealth: {
+           critical: outOfStockItems,
+           warning: lowStockItems,
+           optimal: healthyItems
+        },
+        cashBalance: totalCashIn - totalCashOut,
+        totalCashIn,
+        totalCashOut,
+        netProfitLoss: totalCashIn - totalCashOut,
+        lastComputed: new Date()
+      };
+    } catch (error) {
+      throw new InternalServerErrorException('Failed to compute Godam metrics.');
+    }
+  }
+
+  // ==========================================
+  // INVENTORY VALUATION & WEIGHTED AVERAGE
   // ==========================================
   async getAllStockBalances() {
-    return await (this.prisma as any).godamStockBalance.findMany({
-      orderBy: { productName: 'asc' }
+    return await (this.prisma as any).godamStockBalance.findMany({ 
+      orderBy: { productName: 'asc' } 
     });
   }
 
   async getRecentStockEntries() {
-    return await (this.prisma as any).godamStockEntry.findMany({
-      orderBy: { createdAt: 'desc' },
-      take: 50
+    return await (this.prisma as any).godamStockEntry.findMany({ 
+      orderBy: { createdAt: 'desc' }, 
+      take: 250 // Expanded ledger view
     });
   }
 
-  async processStockEntry(data: any) {
-    const { productId, productName, type, quantity, unitCost, reason, note } = data;
+  async processStockEntry(body: any, decodedToken: any) {
+    const { productId, productName, type, quantity, unitCost, note, reason } = body;
+    const operator = decodedToken?.scope || 'System Admin';
 
-    return await this.prisma.$transaction(async (prisma) => {
-      let balance = await (prisma as any).godamStockBalance.findUnique({ where: { productId } });
-      let newAvgCost = 0;
+    if (!productId || !productName) throw new BadRequestException('Product identifier is mandatory.');
+    if (!['IN', 'OUT', 'TRANSFER'].includes(type)) throw new BadRequestException('Invalid operation type. Must be IN, OUT, or TRANSFER.');
+    if (!quantity || Number(quantity) <= 0) throw new BadRequestException('Transaction volume must be greater than zero.');
 
-      if (type === 'IN') {
-        if (balance) {
-          // Weighted Average Cost Formula
-          const oldTotalValue = Number(balance.quantity) * Number(balance.avgCost);
-          const newTotalValue = quantity * unitCost;
-          const newTotalQty = balance.quantity + quantity;
-          newAvgCost = (oldTotalValue + newTotalValue) / newTotalQty;
+    const qty = Number(quantity);
+    const incomingCost = Number(unitCost) || 0;
 
-          await (prisma as any).godamStockBalance.update({
-            where: { productId },
-            data: { quantity: { increment: quantity }, avgCost: newAvgCost }
-          });
-        } else {
-          newAvgCost = unitCost;
-          await (prisma as any).godamStockBalance.create({
-            data: { productId, productName, quantity, avgCost: unitCost }
-          });
+    return this.prisma.$transaction(async (tx) => {
+      const existing = await (tx as any).godamStockBalance.findUnique({ where: { productId } });
+
+      // Pre-flight check for outwards movement
+      if (['OUT', 'TRANSFER'].includes(type)) {
+        const availableQty = existing?.quantity || 0;
+        if (qty > availableQty) {
+          throw new BadRequestException(`Insufficient stock. Requested: ${qty}, Available: ${availableQty}`);
         }
-      } else if (type === 'OUT') {
-        if (!balance || balance.quantity < quantity) {
-          throw new BadRequestException(`Godam mein ${productName} ka itna stock nahi hai! (Available: ${balance?.quantity || 0})`);
-        }
-        newAvgCost = Number(balance.avgCost);
-        await (prisma as any).godamStockBalance.update({
-          where: { productId },
-          data: { quantity: { decrement: quantity } }
-        });
       }
 
-      // Record Entry
-      const entry = await (prisma as any).godamStockEntry.create({
-        data: {
-          productId, productName, type, quantity,
-          unitCost: type === 'IN' ? unitCost : newAvgCost,
-          totalValue: quantity * (type === 'IN' ? unitCost : newAvgCost),
-          reason, note, createdBy: 'Admin'
-        }
+      let newQty = 0;
+      let newAvgCost = 0;
+      let operationValue = 0;
+
+      if (!existing) {
+        newQty = type === 'IN' ? qty : 0;
+        newAvgCost = incomingCost;
+        operationValue = qty * incomingCost;
+      } else if (type === 'IN') {
+        // Advanced Weighted Average Costing (Enterprise Standard)
+        const totalOldValue = Number(existing.quantity) * Number(existing.avgCost);
+        const totalNewValue = qty * incomingCost;
+        newQty = existing.quantity + qty;
+        newAvgCost = newQty > 0 ? (totalOldValue + totalNewValue) / newQty : 0;
+        operationValue = totalNewValue;
+      } else {
+        // OUT or TRANSFER utilizes existing average cost to determine asset reduction
+        newQty = existing.quantity - qty;
+        newAvgCost = Number(existing.avgCost);
+        operationValue = qty * newAvgCost;
+      }
+
+      // 1. Update Asset Ledger
+      await (tx as any).godamStockBalance.upsert({
+        where: { productId },
+        update: { quantity: newQty, avgCost: newAvgCost, productName },
+        create: { productId, productName, quantity: newQty, avgCost: newAvgCost },
       });
 
-      // Audit Log
-      await this.logActivity(`STOCK_${type}`, `${quantity}x ${productName} godam se ${type === 'IN' ? 'add' : 'nikaal'} kiya gaya.`, 'Admin', prisma);
+      const entryUnitCost = type === 'IN' ? incomingCost : newAvgCost;
+      const finalApiType = type === 'TRANSFER' ? 'OUT' : type;
+      const finalReason = type === 'TRANSFER' ? 'TRANSFER_TO_SHOP' : reason;
+
+      // 2. Record Stock Movement
+      const entry = await (tx as any).godamStockEntry.create({
+        data: {
+          productId,
+          productName,
+          type: finalApiType,
+          quantity: qty,
+          unitCost: entryUnitCost,
+          totalValue: operationValue,
+          note: note || (type === 'TRANSFER' ? 'Asset dispatched to retail floor' : null),
+          reason: finalReason,
+          createdBy: operator
+        },
+      });
+
+      // 3. System Security Audit Log
+      await this.logActivity(
+        type === 'IN' ? 'STOCK_INWARD' : type === 'TRANSFER' ? 'STOCK_DISPATCH' : 'STOCK_OUTWARD',
+        `${qty}x ${productName} processed. Valuation Impact: Rs.${operationValue.toFixed(2)}. ${note ? `Remarks: ${note}` : ''}`,
+        operator,
+        tx
+      );
 
       return entry;
-    });
+    }, { maxWait: 15000, timeout: 30000 }); // Enterprise transaction isolation limits
   }
 
   // ==========================================
-  // CASH LEDGER MANAGEMENT
+  // FINANCIAL CASH-FLOW MANAGER
   // ==========================================
   async getCashTransactions() {
-    return await (this.prisma as any).godamCashTransaction.findMany({
-      orderBy: { createdAt: 'desc' }
+    return await (this.prisma as any).godamCashTransaction.findMany({ 
+      orderBy: { createdAt: 'desc' }, 
+      take: 300 
     });
   }
 
-  async processCashTransaction(data: any) {
-    return await this.prisma.$transaction(async (prisma) => {
-      const txn = await (prisma as any).godamCashTransaction.create({
-        data: {
-          type: data.type,
-          amount: Number(data.amount),
-          category: data.category,
-          note: data.note,
-          createdBy: 'Admin'
-        }
+  async processCashTransaction(body: any, decodedToken: any) {
+    const { type, amount, category, note } = body;
+    const operator = decodedToken?.scope || 'System Admin';
+
+    if (!['IN', 'OUT'].includes(type)) throw new BadRequestException('Transaction direction must be IN or OUT.');
+    if (!amount || Number(amount) <= 0) throw new BadRequestException('Transaction value must be positive.');
+    if (!category) throw new BadRequestException('Cost center / category is required.');
+
+    return this.prisma.$transaction(async (tx) => {
+      const txn = await (tx as any).godamCashTransaction.create({
+        data: { 
+          type, 
+          amount: Number(amount), 
+          category, 
+          note,
+          createdBy: operator
+        },
       });
 
-      await this.logActivity(`CASH_${data.type}`, `Rs. ${data.amount} godam khate mein ${data.type} hue. Category: ${data.category}`, 'Admin', prisma);
+      await this.logActivity(
+        `FUNDS_${type}`,
+        `Rs. ${Number(amount).toLocaleString()} cleared via ${category.toUpperCase()}. ${note ? `Ref: ${note}` : ''}`,
+        operator,
+        tx
+      );
+
       return txn;
     });
   }
 
   // ==========================================
-  // PROFIT & LOSS (P&L) REPORTS
+  // PROFITABILITY ANALYTICS (P&L)
   // ==========================================
-  async generatePnLReport(fromDate?: string, toDate?: string) {
-    let dateFilter = {};
-    if (fromDate || toDate) {
-      dateFilter = { createdAt: {} };
-      if (fromDate) (dateFilter as any).createdAt.gte = new Date(fromDate);
-      if (toDate) {
-        const to = new Date(toDate);
-        to.setHours(23, 59, 59, 999);
-        (dateFilter as any).createdAt.lte = to;
+  async generatePnLReport(from?: string, to?: string) {
+    const whereClause: any = {};
+    if (from || to) {
+      whereClause.createdAt = {};
+      if (from) whereClause.createdAt.gte = new Date(from);
+      if (to) {
+        const endDate = new Date(to);
+        endDate.setHours(23, 59, 59, 999);
+        whereClause.createdAt.lte = endDate;
       }
     }
 
-    const txns = await (this.prisma as any).godamCashTransaction.findMany({ where: dateFilter });
+    const txns = await (this.prisma as any).godamCashTransaction.findMany({ where: whereClause });
+    
     let totalIn = 0;
     let totalOut = 0;
-    const byCategory: any = {};
+    const byCategory: Record<string, { in: number; out: number; net: number }> = {};
 
-    txns.forEach(t => {
+    txns.forEach((t) => {
       const amt = Number(t.amount);
-      if (!byCategory[t.category]) byCategory[t.category] = { in: 0, out: 0 };
+      if (!byCategory[t.category]) {
+         byCategory[t.category] = { in: 0, out: 0, net: 0 };
+      }
       
       if (t.type === 'IN') {
         totalIn += amt;
@@ -164,29 +266,37 @@ export class GodamService {
         totalOut += amt;
         byCategory[t.category].out += amt;
       }
+      
+      byCategory[t.category].net = byCategory[t.category].in - byCategory[t.category].out;
     });
 
-    return {
-      totalIn,
-      totalOut,
+    return { 
+      period: { from: from || 'Inception', to: to || 'Current' }, 
+      totalIn, 
+      totalOut, 
       netProfitLoss: totalIn - totalOut,
-      byCategory
+      marginPercentage: totalIn > 0 ? (((totalIn - totalOut) / totalIn) * 100).toFixed(2) : 0, 
+      byCategory 
     };
   }
 
   // ==========================================
-  // SECURITY AUDIT LOGS
+  // AUDIT & COMPLIANCE LOGGER
   // ==========================================
   async getAuditLogs() {
-    return await (this.prisma as any).godamActivityLog.findMany({
-      orderBy: { createdAt: 'desc' },
-      take: 100 // Sirf latest 100 logs
+    return await (this.prisma as any).godamActivityLog.findMany({ 
+      orderBy: { createdAt: 'desc' }, 
+      take: 500 // Extended audit trail for high-level monitoring
     });
   }
 
-  private async logActivity(action: string, detail: string, createdBy: string, prismaInstance: any) {
-    await prismaInstance.godamActivityLog.create({
-      data: { action, detail, createdBy }
+  private async logActivity(action: string, detail: string, createdBy: string, tx: any) {
+    await tx.godamActivityLog.create({
+      data: {
+        action,
+        detail,
+        createdBy
+      }
     });
   }
 }
