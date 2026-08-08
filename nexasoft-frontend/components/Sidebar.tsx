@@ -23,6 +23,7 @@ import {
   Lock,
   History,
   Boxes,
+  ShieldCheck
 } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -81,9 +82,9 @@ const NAV_SECTIONS: NavSection[] = [
     ],
   },
   {
-    title: "Godam",
+    title: "Secure Vault",
     items: [
-      { id: "godam", label: "गोदाम", icon: Boxes, href: "/godam" },
+      { id: "godam", label: "Godam Portal", icon: ShieldCheck, href: "/godam" },
     ],
   },
 ];
@@ -319,7 +320,6 @@ export default function Sidebar() {
           `}
           title={collapsed ? "Logout" : undefined}
           onClick={() => {
-            // Cookie remove karna aur login page par bhej dena
             if (typeof window !== 'undefined') {
               document.cookie = "isLoggedIn=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
               window.location.href = '/login';

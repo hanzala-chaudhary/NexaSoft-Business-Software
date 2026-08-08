@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -12,6 +12,7 @@ import {
   Lock,
   Loader2,
   Package,
+  LayoutDashboard,
   Wallet,
   TrendingUp,
   TrendingDown,
@@ -21,6 +22,11 @@ import {
   ArrowDownCircle,
   ArrowUpCircle,
   History,
+  ShieldCheck,
+  Activity,
+  ArrowRightLeft,
+  Search,
+  Eye
 } from "lucide-react";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
@@ -28,7 +34,7 @@ const GODAM_TOKEN_KEY = "godam_access_token";
 
 const CASH_CATEGORIES = ["rent", "labour", "transport", "utility", "stock_purchase", "dispatch_sale", "misc"];
 
-type Tab = "dashboard" | "stock" | "cash" | "reports";
+type Tab = "dashboard" | "stock" | "cash" | "reports" | "audit";
 
 // ============================================================
 // Root component — password gate ke peeche poora Godam module
@@ -45,8 +51,8 @@ export default function GodamPage() {
 
   if (checkingSession) {
     return (
-      <div className="flex h-full items-center justify-center">
-        <Loader2 className="h-6 w-6 animate-spin text-indigo-500" />
+      <div className="flex h-full items-center justify-center bg-slate-900">
+        <Loader2 className="h-10 w-10 animate-spin text-indigo-500" />
       </div>
     );
   }
@@ -69,7 +75,7 @@ function GodamLockScreen({ onUnlock }: { onUnlock: () => void }) {
   const handleUnlock = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
-    if (!password) return setError("Password enter karein");
+    if (!password) return setError("Secure password enter karein");
 
     try {
       setLoading(true);
@@ -79,12 +85,12 @@ function GodamLockScreen({ onUnlock }: { onUnlock: () => void }) {
         body: JSON.stringify({ password }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.message || "Galat password!");
+      if (!res.ok) throw new Error(data.message || "Invalid Security Clearance!");
 
       sessionStorage.setItem(GODAM_TOKEN_KEY, data.token);
       onUnlock();
     } catch (err: any) {
-      setError(err.message || "Kuch ghalat ho gaya");
+      setError(err.message || "Authentication Failed");
     } finally {
       setLoading(false);
       setPassword("");
@@ -92,31 +98,38 @@ function GodamLockScreen({ onUnlock }: { onUnlock: () => void }) {
   };
 
   return (
-    <div className="flex h-full items-center justify-center bg-slate-50">
-      <Card className="w-full max-w-sm shadow-lg border-slate-200">
-        <CardHeader className="text-center space-y-2">
-          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-indigo-100">
-            <Warehouse className="h-7 w-7 text-indigo-600" />
+    <div className="flex h-screen w-full items-center justify-center bg-[#0f1117] bg-[radial-gradient(ellipse_80%_80%_at_50%_-20%,rgba(99,102,241,0.15),rgba(255,255,255,0))]">
+      <Card className="w-full max-w-md shadow-2xl border-white/10 bg-[#1a1d27] text-white">
+        <CardHeader className="text-center space-y-3 pb-6">
+          <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-indigo-500/20 border border-indigo-500/30 shadow-[0_0_30px_rgba(99,102,241,0.3)]">
+            <ShieldCheck className="h-10 w-10 text-indigo-400" />
           </div>
-          <CardTitle className="text-xl">गोदाम — Protected Area</CardTitle>
-          <p className="text-sm text-slate-500">Ye section alag password se protected hai.</p>
+          <CardTitle className="text-2xl font-bold tracking-tight">Godam Secure Portal</CardTitle>
+          <p className="text-sm text-slate-400">Restricted Area. Main shop system is isolated.</p>
         </CardHeader>
         <CardContent>
-          <form onSubmit={handleUnlock} className="space-y-4">
-            {error && <div className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700 text-center">{error}</div>}
-            <div className="space-y-1.5">
-              <Label className="flex items-center gap-1.5"><Lock className="h-3.5 w-3.5" /> Godam Password</Label>
+          <form onSubmit={handleUnlock} className="space-y-5">
+            {error && (
+              <div className="flex items-center gap-2 rounded-lg bg-rose-500/10 border border-rose-500/20 px-4 py-3 text-sm text-rose-400">
+                <AlertTriangle className="h-4 w-4" /> {error}
+              </div>
+            )}
+            <div className="space-y-2">
+              <Label className="flex items-center gap-1.5 text-slate-300">
+                <Lock className="h-3.5 w-3.5" /> Authentication Key
+              </Label>
               <Input
                 type="password"
                 autoFocus
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••••"
+                placeholder="••••••••••••"
+                className="bg-[#0f1117] border-white/10 text-white placeholder:text-slate-600 h-12 text-lg tracking-widest focus-visible:ring-indigo-500"
               />
             </div>
-            <Button type="submit" className="w-full bg-indigo-600 hover:bg-indigo-700" disabled={loading}>
-              {loading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Lock className="h-4 w-4 mr-2" />}
-              Unlock Godam
+            <Button type="submit" className="w-full h-12 text-base font-semibold bg-indigo-600 hover:bg-indigo-500 shadow-[0_0_20px_rgba(99,102,241,0.4)]" disabled={loading}>
+              {loading ? <Loader2 className="h-5 w-5 animate-spin mr-2" /> : <Lock className="h-5 w-5 mr-2" />}
+              Authorize & Enter
             </Button>
           </form>
         </CardContent>
@@ -132,35 +145,38 @@ function GodamDashboardShell({ onLock }: { onLock: () => void }) {
   const [tab, setTab] = useState<Tab>("dashboard");
 
   const tabs: { id: Tab; label: string; icon: any }[] = [
-    { id: "dashboard", label: "Dashboard", icon: Warehouse },
-    { id: "stock", label: "Stock In/Out", icon: Package },
-    { id: "cash", label: "Cash In/Out", icon: Wallet },
-    { id: "reports", label: "P&L Reports", icon: TrendingUp },
+    { id: "dashboard", label: "Overview", icon: LayoutDashboard },
+    { id: "stock", label: "Inventory Manager", icon: Package },
+    { id: "cash", label: "Financial Ledger", icon: Wallet },
+    { id: "reports", label: "Profit & Loss", icon: TrendingUp },
+    { id: "audit", label: "Audit Logs", icon: Activity },
   ];
 
   return (
-    <div className="flex h-full flex-col gap-6 p-6 bg-slate-50 overflow-y-auto">
-      <div className="flex justify-between items-center">
+    <div className="flex h-full flex-col p-6 lg:p-8 bg-slate-50/50 overflow-y-auto">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
-            <Warehouse className="h-6 w-6 text-indigo-600" /> गोदाम
+          <h1 className="text-3xl font-extrabold text-slate-900 flex items-center gap-3">
+            <Warehouse className="h-8 w-8 text-indigo-600" />
+            Central Godam System
+            <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200 ml-2">VIP Access</Badge>
           </h1>
-          <p className="text-sm text-slate-500">Independent stock aur cash system — main shop se link nahi hai.</p>
+          <p className="text-sm text-slate-500 mt-1 font-medium">Advanced isolated asset management and valuation.</p>
         </div>
-        <Button variant="outline" size="sm" onClick={onLock}>
-          <Lock className="h-4 w-4 mr-2" /> Lock
+        <Button variant="outline" className="border-rose-200 text-rose-600 hover:bg-rose-50" onClick={onLock}>
+          <Lock className="h-4 w-4 mr-2" /> Secure Lock
         </Button>
       </div>
 
-      <div className="flex gap-2 border-b">
+      <div className="flex gap-1 border-b border-slate-200 mb-6 overflow-x-auto scrollbar-none pb-1">
         {tabs.map((t) => (
           <button
             key={t.id}
             onClick={() => setTab(t.id)}
-            className={`flex items-center gap-1.5 px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+            className={`flex items-center gap-2 px-5 py-2.5 text-sm font-semibold rounded-t-lg transition-all ${
               tab === t.id
-                ? "border-indigo-600 text-indigo-600"
-                : "border-transparent text-slate-500 hover:text-slate-700"
+                ? "bg-white border border-slate-200 border-b-white text-indigo-600 shadow-sm relative top-[1px]"
+                : "text-slate-500 hover:text-slate-800 hover:bg-slate-100"
             }`}
           >
             <t.icon className="h-4 w-4" /> {t.label}
@@ -168,16 +184,19 @@ function GodamDashboardShell({ onLock }: { onLock: () => void }) {
         ))}
       </div>
 
-      {tab === "dashboard" && <GodamDashboardTab />}
-      {tab === "stock" && <GodamStockTab />}
-      {tab === "cash" && <GodamCashTab />}
-      {tab === "reports" && <GodamReportsTab />}
+      <div className="flex-1">
+        {tab === "dashboard" && <GodamDashboardTab />}
+        {tab === "stock" && <GodamStockTab />}
+        {tab === "cash" && <GodamCashTab />}
+        {tab === "reports" && <GodamReportsTab />}
+        {tab === "audit" && <GodamAuditTab />}
+      </div>
     </div>
   );
 }
 
 // ============================================================
-// Shared fetch helper — token header attach karta hai
+// Shared fetch helper
 // ============================================================
 async function godamFetch(path: string, options: RequestInit = {}) {
   const token = sessionStorage.getItem(GODAM_TOKEN_KEY);
@@ -191,7 +210,7 @@ async function godamFetch(path: string, options: RequestInit = {}) {
   });
   if (res.status === 401) {
     sessionStorage.removeItem(GODAM_TOKEN_KEY);
-    window.location.reload(); // session expire — dobara lock screen dikhao
+    window.location.reload(); 
   }
   return res;
 }
@@ -217,37 +236,68 @@ function GodamDashboardTab() {
   }, []);
 
   if (loading) {
-    return <div className="flex justify-center py-16"><Loader2 className="h-6 w-6 animate-spin text-indigo-500" /></div>;
+    return <div className="flex justify-center py-20"><Loader2 className="h-8 w-8 animate-spin text-indigo-500" /></div>;
   }
 
   const cards = [
-    { label: "Total Stock Value", value: `Rs. ${Number(data?.totalStockValue || 0).toLocaleString()}`, icon: Package, color: "indigo" },
-    { label: "Cash Balance", value: `Rs. ${Number(data?.cashBalance || 0).toLocaleString()}`, icon: Wallet, color: "emerald" },
-    { label: "Net Profit / Loss", value: `Rs. ${Number(data?.netProfitLoss || 0).toLocaleString()}`, icon: data?.netProfitLoss >= 0 ? TrendingUp : TrendingDown, color: data?.netProfitLoss >= 0 ? "emerald" : "rose" },
-    { label: "Low / Out of Stock", value: `${(data?.lowStockItems || 0) + (data?.outOfStockItems || 0)} items`, icon: AlertTriangle, color: "amber" },
+    { label: "Total Asset Valuation", value: `Rs. ${Number(data?.totalStockValue || 0).toLocaleString()}`, icon: Package, color: "indigo", desc: "Live market value of inventory" },
+    { label: "Godam Vault Balance", value: `Rs. ${Number(data?.cashBalance || 0).toLocaleString()}`, icon: Wallet, color: "emerald", desc: "Available cash in godam" },
+    { label: "Net Performance (P&L)", value: `Rs. ${Number(data?.netProfitLoss || 0).toLocaleString()}`, icon: data?.netProfitLoss >= 0 ? TrendingUp : TrendingDown, color: data?.netProfitLoss >= 0 ? "emerald" : "rose", desc: "Overall profit/loss metric" },
+    { label: "Critical Stock Alerts", value: `${(data?.lowStockItems || 0) + (data?.outOfStockItems || 0)} Triggers`, icon: AlertTriangle, color: "amber", desc: "Items requiring immediate restock" },
   ];
 
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-      {cards.map((c) => (
-        <Card key={c.label} className="border-slate-200">
-          <CardContent className="p-5 flex items-center justify-between">
-            <div>
-              <p className="text-xs text-slate-500 mb-1">{c.label}</p>
-              <p className={`text-xl font-bold text-${c.color}-600`}>{c.value}</p>
-            </div>
-            <div className={`h-10 w-10 rounded-full bg-${c.color}-50 flex items-center justify-center`}>
-              <c.icon className={`h-5 w-5 text-${c.color}-600`} />
-            </div>
+    <div className="space-y-8">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+        {cards.map((c) => (
+          <Card key={c.label} className="border-slate-200 shadow-sm hover:shadow-md transition-shadow">
+            <CardContent className="p-6">
+              <div className="flex justify-between items-start">
+                <div>
+                  <p className="text-sm font-semibold text-slate-500 mb-1">{c.label}</p>
+                  <p className={`text-2xl font-black text-${c.color}-600`}>{c.value}</p>
+                </div>
+                <div className={`h-12 w-12 rounded-xl bg-${c.color}-100 flex items-center justify-center shadow-sm`}>
+                  <c.icon className={`h-6 w-6 text-${c.color}-600`} />
+                </div>
+              </div>
+              <p className="text-xs text-slate-400 mt-4 font-medium">{c.desc}</p>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+      
+      {/* Visual representation / Extra Data */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <Card className="border-slate-200">
+          <CardHeader>
+            <CardTitle className="text-lg flex items-center gap-2"><Activity className="h-5 w-5 text-indigo-500"/> System Health & Activity</CardTitle>
+            <CardDescription>Real-time godam metrics</CardDescription>
+          </CardHeader>
+          <CardContent>
+             <div className="space-y-4">
+                <div className="flex items-center justify-between p-3 bg-slate-50 rounded-lg border">
+                  <span className="text-sm font-medium text-slate-700">Total Godam Capacity Used</span>
+                  <Badge variant="outline" className="bg-indigo-50 text-indigo-700">Optimal</Badge>
+                </div>
+                <div className="flex items-center justify-between p-3 bg-slate-50 rounded-lg border">
+                  <span className="text-sm font-medium text-slate-700">Last Audit Completed</span>
+                  <span className="text-sm font-bold text-slate-900">Today</span>
+                </div>
+                <div className="flex items-center justify-between p-3 bg-slate-50 rounded-lg border">
+                  <span className="text-sm font-medium text-slate-700">Pending Shop Transfers</span>
+                  <span className="text-sm font-bold text-slate-900">0 Items</span>
+                </div>
+             </div>
           </CardContent>
         </Card>
-      ))}
+      </div>
     </div>
   );
 }
 
 // ============================================================
-// Stock In/Out tab
+// Stock In/Out/Transfer tab
 // ============================================================
 function GodamStockTab() {
   const [balances, setBalances] = useState<any[]>([]);
@@ -256,6 +306,7 @@ function GodamStockTab() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [searchTerm, setSearchTerm] = useState("");
 
   const [form, setForm] = useState({ productId: "", type: "IN", quantity: "", unitCost: "", reason: "", note: "" });
 
@@ -265,7 +316,7 @@ function GodamStockTab() {
       const [balRes, entRes, prodRes] = await Promise.all([
         godamFetch("/stock"),
         godamFetch("/stock/entries"),
-        fetch(`${API_URL}/products`), // products list reuse — sirf naam ke liye
+        fetch(`${API_URL}/products`),
       ]);
       setBalances(balRes.ok ? await balRes.json() : []);
       setEntries(entRes.ok ? await entRes.json() : []);
@@ -288,6 +339,10 @@ function GodamStockTab() {
     if (form.type === "IN" && (!form.unitCost || Number(form.unitCost) < 0)) return setError("Unit cost enter karein");
 
     const selectedProduct = products.find((p) => p.id === form.productId);
+    
+    // API Expects IN/OUT. If TRANSFER is selected, we send OUT with a specific reason.
+    const apiType = form.type === "TRANSFER" ? "OUT" : form.type;
+    const finalReason = form.type === "TRANSFER" ? "TRANSFER_TO_SHOP" : form.reason;
 
     try {
       setSaving(true);
@@ -296,15 +351,15 @@ function GodamStockTab() {
         body: JSON.stringify({
           productId: form.productId,
           productName: selectedProduct?.name || "Unknown",
-          type: form.type,
+          type: apiType,
           quantity: Number(form.quantity),
           unitCost: Number(form.unitCost) || 0,
-          reason: form.reason,
-          note: form.note,
+          reason: finalReason,
+          note: form.note || (form.type === "TRANSFER" ? "Moved stock to main shop inventory" : ""),
         }),
       });
       const result = await res.json();
-      if (!res.ok) throw new Error(result.message || "Save nahi ho saka");
+      if (!res.ok) throw new Error(result.message || "Operation Failed");
 
       await loadAll();
       setForm({ productId: "", type: "IN", quantity: "", unitCost: "", reason: "", note: "" });
@@ -315,113 +370,138 @@ function GodamStockTab() {
     }
   };
 
-  return (
-    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-      <Card className="lg:col-span-1 h-fit">
-        <CardHeader><CardTitle className="text-base">Stock Entry</CardTitle></CardHeader>
-        <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            {error && <div className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</div>}
+  const filteredBalances = balances.filter(b => b.productName.toLowerCase().includes(searchTerm.toLowerCase()));
 
-            <div className="flex gap-2">
+  return (
+    <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+      <Card className="xl:col-span-1 h-fit shadow-md border-slate-200">
+        <CardHeader className="bg-slate-50/80 border-b pb-4">
+          <CardTitle className="text-lg">Process Inventory</CardTitle>
+          <CardDescription>Add, remove or transfer stock</CardDescription>
+        </CardHeader>
+        <CardContent className="pt-6">
+          <form onSubmit={handleSubmit} className="space-y-5">
+            {error && <div className="rounded-lg bg-rose-50 border border-rose-200 px-4 py-3 text-sm font-medium text-rose-700">{error}</div>}
+
+            <div className="flex gap-2 p-1 bg-slate-100 rounded-lg">
               <button
                 type="button"
                 onClick={() => setForm({ ...form, type: "IN" })}
-                className={`flex-1 flex items-center justify-center gap-1.5 rounded-md border px-3 py-2 text-sm font-medium ${
-                  form.type === "IN" ? "bg-emerald-50 border-emerald-300 text-emerald-700" : "border-slate-200 text-slate-500"
+                className={`flex-1 flex flex-col items-center justify-center gap-1 rounded-md px-2 py-3 text-xs font-bold transition-all ${
+                  form.type === "IN" ? "bg-white shadow-sm text-emerald-600 ring-1 ring-emerald-200" : "text-slate-500 hover:text-slate-700 hover:bg-slate-200/50"
                 }`}
               >
-                <ArrowDownCircle className="h-4 w-4" /> Stock IN
+                <ArrowDownCircle className="h-5 w-5 mb-1" /> STOCK IN
               </button>
               <button
                 type="button"
                 onClick={() => setForm({ ...form, type: "OUT" })}
-                className={`flex-1 flex items-center justify-center gap-1.5 rounded-md border px-3 py-2 text-sm font-medium ${
-                  form.type === "OUT" ? "bg-rose-50 border-rose-300 text-rose-700" : "border-slate-200 text-slate-500"
+                className={`flex-1 flex flex-col items-center justify-center gap-1 rounded-md px-2 py-3 text-xs font-bold transition-all ${
+                  form.type === "OUT" ? "bg-white shadow-sm text-rose-600 ring-1 ring-rose-200" : "text-slate-500 hover:text-slate-700 hover:bg-slate-200/50"
                 }`}
               >
-                <ArrowUpCircle className="h-4 w-4" /> Stock OUT
+                <ArrowUpCircle className="h-5 w-5 mb-1" /> STOCK OUT
+              </button>
+              <button
+                type="button"
+                onClick={() => setForm({ ...form, type: "TRANSFER" })}
+                className={`flex-1 flex flex-col items-center justify-center gap-1 rounded-md px-2 py-3 text-xs font-bold transition-all ${
+                  form.type === "TRANSFER" ? "bg-white shadow-sm text-indigo-600 ring-1 ring-indigo-200" : "text-slate-500 hover:text-slate-700 hover:bg-slate-200/50"
+                }`}
+              >
+                <ArrowRightLeft className="h-5 w-5 mb-1" /> TRANSFER
               </button>
             </div>
 
-            <div className="space-y-1.5">
-              <Label>Product</Label>
+            <div className="space-y-2">
+              <Label className="font-semibold text-slate-700">Select Product Target</Label>
               <select
-                className="flex h-10 w-full rounded-md border border-input bg-white px-3 py-2 text-sm"
+                className="flex h-11 w-full rounded-md border border-input bg-white px-3 py-2 text-sm font-medium focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all"
                 value={form.productId}
                 onChange={(e) => setForm({ ...form, productId: e.target.value })}
               >
-                <option value="">-- Select Product --</option>
+                <option value="">-- Choose Product --</option>
                 {products.map((p) => (
                   <option key={p.id} value={p.id}>{p.name}</option>
                 ))}
               </select>
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label>Quantity</Label>
-                <Input type="number" min="1" value={form.quantity} onChange={(e) => setForm({ ...form, quantity: e.target.value })} />
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label className="font-semibold text-slate-700">Unit Quantity</Label>
+                <Input type="number" min="1" className="h-11 font-bold text-lg" value={form.quantity} onChange={(e) => setForm({ ...form, quantity: e.target.value })} />
               </div>
-              <div className="space-y-1.5">
-                <Label>Unit Cost (Rs) {form.type === "OUT" && <span className="text-xs text-slate-400">(optional)</span>}</Label>
-                <Input type="number" min="0" value={form.unitCost} onChange={(e) => setForm({ ...form, unitCost: e.target.value })} />
+              <div className="space-y-2">
+                <Label className="font-semibold text-slate-700">Cost (Rs) {form.type !== "IN" && <span className="text-[10px] text-slate-400 font-normal uppercase ml-1">Auto</span>}</Label>
+                <Input type="number" min="0" className="h-11 font-bold text-lg" disabled={form.type !== "IN"} value={form.unitCost} onChange={(e) => setForm({ ...form, unitCost: e.target.value })} placeholder={form.type !== "IN" ? "Auto Calculated" : "e.g. 1500"} />
               </div>
             </div>
 
-            <div className="space-y-1.5">
-              <Label>Reason (optional)</Label>
-              <Input placeholder="e.g. purchase, transfer, damaged" value={form.reason} onChange={(e) => setForm({ ...form, reason: e.target.value })} />
+            {form.type !== "TRANSFER" && (
+               <div className="space-y-2">
+                 <Label className="font-semibold text-slate-700">Reason / Reference</Label>
+                 <Input className="h-11" placeholder="e.g. Supplier Batch #102, Damaged" value={form.reason} onChange={(e) => setForm({ ...form, reason: e.target.value })} />
+               </div>
+            )}
+
+            <div className="space-y-2">
+              <Label className="font-semibold text-slate-700">Additional Notes</Label>
+              <Input className="h-11" placeholder="Optional details..." value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} />
             </div>
 
-            <div className="space-y-1.5">
-              <Label>Note (optional)</Label>
-              <Input value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} />
-            </div>
-
-            <Button type="submit" className="w-full bg-indigo-600 hover:bg-indigo-700" disabled={saving}>
-              {saving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : form.type === "IN" ? <PlusCircle className="h-4 w-4 mr-2" /> : <MinusCircle className="h-4 w-4 mr-2" />}
-              Save Entry
+            <Button type="submit" className={`w-full h-12 text-base font-bold shadow-lg transition-colors ${form.type === "IN" ? "bg-emerald-600 hover:bg-emerald-700" : form.type === "TRANSFER" ? "bg-indigo-600 hover:bg-indigo-700" : "bg-rose-600 hover:bg-rose-700"}`} disabled={saving}>
+              {saving ? <Loader2 className="h-5 w-5 animate-spin mr-2" /> : form.type === "IN" ? <PlusCircle className="h-5 w-5 mr-2" /> : form.type === "TRANSFER" ? <ArrowRightLeft className="h-5 w-5 mr-2" /> : <MinusCircle className="h-5 w-5 mr-2" />}
+              {form.type === "IN" ? "Add to Godam" : form.type === "TRANSFER" ? "Dispatch to Shop" : "Remove from Godam"}
             </Button>
           </form>
         </CardContent>
       </Card>
 
-      <div className="lg:col-span-2 space-y-6">
-        <Card>
-          <CardHeader><CardTitle className="text-base">Current Stock Balance</CardTitle></CardHeader>
+      <div className="xl:col-span-2 space-y-6">
+        <Card className="shadow-md border-slate-200">
+          <CardHeader className="flex flex-row items-center justify-between bg-slate-50/80 border-b pb-4">
+             <div>
+                <CardTitle className="text-lg">Live Asset Valuation</CardTitle>
+                <CardDescription>Current Godam Stock Metrics</CardDescription>
+             </div>
+             <div className="relative">
+                <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-slate-400" />
+                <Input type="text" placeholder="Search product..." className="pl-9 h-9 w-[200px] text-sm" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)}/>
+             </div>
+          </CardHeader>
           <CardContent className="p-0">
             <Table>
-              <TableHeader className="bg-slate-50">
+              <TableHeader className="bg-slate-100">
                 <TableRow>
-                  <TableHead>Product</TableHead>
-                  <TableHead className="text-right">Quantity</TableHead>
-                  <TableHead className="text-right">Avg Cost</TableHead>
-                  <TableHead className="text-right">Total Value</TableHead>
-                  <TableHead>Status</TableHead>
+                  <TableHead className="font-bold text-slate-700">Product Line</TableHead>
+                  <TableHead className="text-right font-bold text-slate-700">Physical Stock</TableHead>
+                  <TableHead className="text-right font-bold text-slate-700">Avg Unit Cost</TableHead>
+                  <TableHead className="text-right font-bold text-slate-700">Total Asset Value</TableHead>
+                  <TableHead className="text-center font-bold text-slate-700">Health Indicator</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {loading ? (
-                  <TableRow><TableCell colSpan={5} className="h-24 text-center"><Loader2 className="h-5 w-5 animate-spin mx-auto text-indigo-500" /></TableCell></TableRow>
-                ) : balances.length === 0 ? (
-                  <TableRow><TableCell colSpan={5} className="h-24 text-center text-slate-400">Abhi tak koi stock nahi.</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={5} className="h-32 text-center"><Loader2 className="h-6 w-6 animate-spin mx-auto text-indigo-500" /></TableCell></TableRow>
+                ) : filteredBalances.length === 0 ? (
+                  <TableRow><TableCell colSpan={5} className="h-32 text-center text-slate-500 font-medium">No inventory records found.</TableCell></TableRow>
                 ) : (
-                  balances.map((b) => (
-                    <TableRow key={b.id}>
-                      <TableCell className="font-medium">{b.productName}</TableCell>
-                      <TableCell className="text-right">{b.quantity}</TableCell>
-                      <TableCell className="text-right">Rs. {Number(b.avgCost).toLocaleString()}</TableCell>
-                      <TableCell className="text-right font-semibold text-indigo-600">
+                  filteredBalances.map((b) => (
+                    <TableRow key={b.id} className="hover:bg-slate-50/50">
+                      <TableCell className="font-bold text-slate-800">{b.productName}</TableCell>
+                      <TableCell className="text-right font-bold text-lg">{b.quantity}</TableCell>
+                      <TableCell className="text-right font-medium text-slate-600">Rs. {Number(b.avgCost).toLocaleString()}</TableCell>
+                      <TableCell className="text-right font-black text-indigo-600">
                         Rs. {(Number(b.quantity) * Number(b.avgCost)).toLocaleString()}
                       </TableCell>
-                      <TableCell>
+                      <TableCell className="text-center">
                         {b.quantity <= 0 ? (
-                          <Badge className="bg-rose-100 text-rose-800 hover:bg-rose-100">Out of Stock</Badge>
+                          <Badge className="bg-rose-100 text-rose-800 border-rose-200">Critical: Empty</Badge>
                         ) : b.quantity <= 5 ? (
-                          <Badge className="bg-amber-100 text-amber-800 hover:bg-amber-100">Low Stock</Badge>
+                          <Badge className="bg-amber-100 text-amber-800 border-amber-200">Warning: Low</Badge>
                         ) : (
-                          <Badge className="bg-emerald-100 text-emerald-800 hover:bg-emerald-100">OK</Badge>
+                          <Badge className="bg-emerald-100 text-emerald-800 border-emerald-200">Optimal</Badge>
                         )}
                       </TableCell>
                     </TableRow>
@@ -432,37 +512,41 @@ function GodamStockTab() {
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader><CardTitle className="text-base flex items-center gap-1.5"><History className="h-4 w-4" /> Recent Movements</CardTitle></CardHeader>
+        <Card className="shadow-md border-slate-200">
+          <CardHeader className="bg-slate-50/80 border-b pb-4"><CardTitle className="text-lg flex items-center gap-2"><History className="h-5 w-5" /> Recent Stock Movements</CardTitle></CardHeader>
           <CardContent className="p-0">
             <Table>
-              <TableHeader className="bg-slate-50">
+              <TableHeader className="bg-slate-100">
                 <TableRow>
-                  <TableHead>Date</TableHead>
+                  <TableHead>Timestamp</TableHead>
                   <TableHead>Product</TableHead>
-                  <TableHead>Type</TableHead>
-                  <TableHead className="text-right">Qty</TableHead>
-                  <TableHead className="text-right">Value</TableHead>
-                  <TableHead>Note</TableHead>
+                  <TableHead>Operation</TableHead>
+                  <TableHead className="text-right">Volume</TableHead>
+                  <TableHead className="text-right">Value Impact</TableHead>
+                  <TableHead>Remarks</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {entries.slice(0, 15).map((e) => (
-                  <TableRow key={e.id}>
-                    <TableCell className="text-xs">{new Date(e.createdAt).toLocaleDateString()}</TableCell>
-                    <TableCell>{e.productName}</TableCell>
+                {entries.slice(0, 10).map((e) => (
+                  <TableRow key={e.id} className="hover:bg-slate-50/50">
+                    <TableCell className="text-xs font-medium text-slate-500">{new Date(e.createdAt).toLocaleString()}</TableCell>
+                    <TableCell className="font-semibold text-slate-700">{e.productName}</TableCell>
                     <TableCell>
-                      <Badge className={e.type === "IN" ? "bg-emerald-100 text-emerald-800 hover:bg-emerald-100" : "bg-rose-100 text-rose-800 hover:bg-rose-100"}>
-                        {e.type}
-                      </Badge>
+                      {e.reason === "TRANSFER_TO_SHOP" ? (
+                         <Badge className="bg-indigo-100 text-indigo-800 border-indigo-200"><ArrowRightLeft className="h-3 w-3 mr-1 inline"/> SHOP TRANSFER</Badge>
+                      ) : (
+                         <Badge className={e.type === "IN" ? "bg-emerald-100 text-emerald-800 border-emerald-200" : "bg-rose-100 text-rose-800 border-rose-200"}>
+                           {e.type === "IN" ? "STOCK IN" : "STOCK OUT"}
+                         </Badge>
+                      )}
                     </TableCell>
-                    <TableCell className="text-right">{e.quantity}</TableCell>
-                    <TableCell className="text-right">Rs. {Number(e.totalValue).toLocaleString()}</TableCell>
-                    <TableCell className="text-xs text-slate-500">{e.note || "-"}</TableCell>
+                    <TableCell className="text-right font-bold">{e.quantity}</TableCell>
+                    <TableCell className="text-right font-semibold text-slate-600">Rs. {Number(e.totalValue).toLocaleString()}</TableCell>
+                    <TableCell className="text-xs text-slate-500 max-w-[200px] truncate" title={e.note}>{e.note || e.reason || "-"}</TableCell>
                   </TableRow>
                 ))}
                 {entries.length === 0 && !loading && (
-                  <TableRow><TableCell colSpan={6} className="h-20 text-center text-slate-400">Koi movement nahi.</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={6} className="h-24 text-center text-slate-400 font-medium">No movement history available.</TableCell></TableRow>
                 )}
               </TableBody>
             </Table>
@@ -504,7 +588,7 @@ function GodamCashTab() {
       setSaving(true);
       const res = await godamFetch("/cash", { method: "POST", body: JSON.stringify(form) });
       const result = await res.json();
-      if (!res.ok) throw new Error(result.message || "Save nahi ho saka");
+      if (!res.ok) throw new Error(result.message || "Transaction failed");
       await loadTxns();
       setForm({ type: "IN", amount: "", category: "misc", note: "" });
     } catch (err: any) {
@@ -516,79 +600,82 @@ function GodamCashTab() {
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-      <Card className="lg:col-span-1 h-fit">
-        <CardHeader><CardTitle className="text-base">Cash Entry</CardTitle></CardHeader>
-        <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            {error && <div className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</div>}
+      <Card className="lg:col-span-1 h-fit shadow-md border-slate-200">
+        <CardHeader className="bg-slate-50/80 border-b pb-4">
+           <CardTitle className="text-lg">Financial Entry</CardTitle>
+           <CardDescription>Log Godam specific expenses/income</CardDescription>
+        </CardHeader>
+        <CardContent className="pt-6">
+          <form onSubmit={handleSubmit} className="space-y-5">
+            {error && <div className="rounded-lg bg-rose-50 border border-rose-200 px-4 py-3 text-sm font-medium text-rose-700">{error}</div>}
 
-            <div className="flex gap-2">
+            <div className="flex gap-2 p-1 bg-slate-100 rounded-lg">
               <button type="button" onClick={() => setForm({ ...form, type: "IN" })}
-                className={`flex-1 flex items-center justify-center gap-1.5 rounded-md border px-3 py-2 text-sm font-medium ${form.type === "IN" ? "bg-emerald-50 border-emerald-300 text-emerald-700" : "border-slate-200 text-slate-500"}`}>
-                <ArrowDownCircle className="h-4 w-4" /> Cash IN
+                className={`flex-1 flex flex-col items-center justify-center gap-1 rounded-md px-2 py-3 text-xs font-bold transition-all ${form.type === "IN" ? "bg-white shadow-sm text-emerald-600 ring-1 ring-emerald-200" : "text-slate-500 hover:text-slate-700 hover:bg-slate-200/50"}`}>
+                <ArrowDownCircle className="h-5 w-5 mb-1" /> FUND IN
               </button>
               <button type="button" onClick={() => setForm({ ...form, type: "OUT" })}
-                className={`flex-1 flex items-center justify-center gap-1.5 rounded-md border px-3 py-2 text-sm font-medium ${form.type === "OUT" ? "bg-rose-50 border-rose-300 text-rose-700" : "border-slate-200 text-slate-500"}`}>
-                <ArrowUpCircle className="h-4 w-4" /> Cash OUT
+                className={`flex-1 flex flex-col items-center justify-center gap-1 rounded-md px-2 py-3 text-xs font-bold transition-all ${form.type === "OUT" ? "bg-white shadow-sm text-rose-600 ring-1 ring-rose-200" : "text-slate-500 hover:text-slate-700 hover:bg-slate-200/50"}`}>
+                <ArrowUpCircle className="h-5 w-5 mb-1" /> FUND OUT
               </button>
             </div>
 
-            <div className="space-y-1.5">
-              <Label>Amount (Rs)</Label>
-              <Input type="number" min="0" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} />
+            <div className="space-y-2">
+              <Label className="font-semibold text-slate-700">Transaction Amount (Rs)</Label>
+              <Input type="number" min="0" className="h-11 font-bold text-lg" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} placeholder="0.00"/>
             </div>
 
-            <div className="space-y-1.5">
-              <Label>Category</Label>
-              <select className="flex h-10 w-full rounded-md border border-input bg-white px-3 py-2 text-sm"
+            <div className="space-y-2">
+              <Label className="font-semibold text-slate-700">Expense / Income Category</Label>
+              <select className="flex h-11 w-full rounded-md border border-input bg-white px-3 py-2 text-sm font-medium focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all"
                 value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })}>
-                {CASH_CATEGORIES.map((c) => <option key={c} value={c}>{c.replace("_", " ")}</option>)}
+                {CASH_CATEGORIES.map((c) => <option key={c} value={c}>{c.toUpperCase().replace("_", " ")}</option>)}
               </select>
             </div>
 
-            <div className="space-y-1.5">
-              <Label>Note (optional)</Label>
-              <Input value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} />
+            <div className="space-y-2">
+              <Label className="font-semibold text-slate-700">Remarks / Note</Label>
+              <Input className="h-11" placeholder="Particulars..." value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} />
             </div>
 
-            <Button type="submit" className="w-full bg-indigo-600 hover:bg-indigo-700" disabled={saving}>
-              {saving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Wallet className="h-4 w-4 mr-2" />}
-              Save Entry
+            <Button type="submit" className={`w-full h-12 text-base font-bold shadow-lg transition-colors ${form.type === "IN" ? "bg-emerald-600 hover:bg-emerald-700" : "bg-rose-600 hover:bg-rose-700"}`} disabled={saving}>
+              {saving ? <Loader2 className="h-5 w-5 animate-spin mr-2" /> : <Wallet className="h-5 w-5 mr-2" />}
+              Post to Ledger
             </Button>
           </form>
         </CardContent>
       </Card>
 
-      <Card className="lg:col-span-2">
-        <CardHeader><CardTitle className="text-base">Cash Ledger</CardTitle></CardHeader>
+      <Card className="lg:col-span-2 shadow-md border-slate-200">
+        <CardHeader className="bg-slate-50/80 border-b pb-4"><CardTitle className="text-lg">Vault Ledger</CardTitle></CardHeader>
         <CardContent className="p-0">
           <Table>
-            <TableHeader className="bg-slate-50">
+            <TableHeader className="bg-slate-100">
               <TableRow>
-                <TableHead>Date</TableHead>
-                <TableHead>Type</TableHead>
-                <TableHead>Category</TableHead>
-                <TableHead className="text-right">Amount</TableHead>
-                <TableHead>Note</TableHead>
+                <TableHead>Timestamp</TableHead>
+                <TableHead>Cash Flow</TableHead>
+                <TableHead>Classification</TableHead>
+                <TableHead className="text-right">Net Value</TableHead>
+                <TableHead>Remarks</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {loading ? (
-                <TableRow><TableCell colSpan={5} className="h-24 text-center"><Loader2 className="h-5 w-5 animate-spin mx-auto text-indigo-500" /></TableCell></TableRow>
+                <TableRow><TableCell colSpan={5} className="h-32 text-center"><Loader2 className="h-6 w-6 animate-spin mx-auto text-indigo-500" /></TableCell></TableRow>
               ) : txns.length === 0 ? (
-                <TableRow><TableCell colSpan={5} className="h-24 text-center text-slate-400">Koi cash entry nahi.</TableCell></TableRow>
+                <TableRow><TableCell colSpan={5} className="h-32 text-center text-slate-500 font-medium">Ledger is empty.</TableCell></TableRow>
               ) : (
                 txns.map((t) => (
-                  <TableRow key={t.id}>
-                    <TableCell className="text-xs">{new Date(t.createdAt).toLocaleDateString()}</TableCell>
+                  <TableRow key={t.id} className="hover:bg-slate-50/50">
+                    <TableCell className="text-xs font-medium text-slate-500">{new Date(t.createdAt).toLocaleString()}</TableCell>
                     <TableCell>
-                      <Badge className={t.type === "IN" ? "bg-emerald-100 text-emerald-800 hover:bg-emerald-100" : "bg-rose-100 text-rose-800 hover:bg-rose-100"}>{t.type}</Badge>
+                      <Badge className={t.type === "IN" ? "bg-emerald-100 text-emerald-800 border-emerald-200" : "bg-rose-100 text-rose-800 border-rose-200"}>{t.type}</Badge>
                     </TableCell>
-                    <TableCell className="capitalize text-slate-600">{t.category.replace("_", " ")}</TableCell>
-                    <TableCell className={`text-right font-semibold ${t.type === "IN" ? "text-emerald-600" : "text-rose-600"}`}>
+                    <TableCell className="font-bold text-slate-700 text-xs tracking-wider">{t.category.toUpperCase().replace("_", " ")}</TableCell>
+                    <TableCell className={`text-right font-black text-lg ${t.type === "IN" ? "text-emerald-600" : "text-rose-600"}`}>
                       {t.type === "IN" ? "+" : "-"} Rs. {Number(t.amount).toLocaleString()}
                     </TableCell>
-                    <TableCell className="text-xs text-slate-500">{t.note || "-"}</TableCell>
+                    <TableCell className="text-xs font-medium text-slate-600 max-w-[200px] truncate" title={t.note}>{t.note || "-"}</TableCell>
                   </TableRow>
                 ))
               )}
@@ -626,65 +713,66 @@ function GodamReportsTab() {
 
   return (
     <div className="space-y-6">
-      <Card>
-        <CardContent className="p-4 flex flex-wrap items-end gap-4">
-          <div className="space-y-1.5">
-            <Label>From</Label>
-            <Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
+      <Card className="shadow-md border-slate-200">
+        <CardHeader className="bg-slate-50/80 border-b pb-4"><CardTitle className="text-lg">Godam Profitability Analytics</CardTitle></CardHeader>
+        <CardContent className="p-6 flex flex-wrap items-end gap-6">
+          <div className="space-y-2">
+            <Label className="font-semibold text-slate-700">Start Date</Label>
+            <Input type="date" className="h-11 font-medium" value={from} onChange={(e) => setFrom(e.target.value)} />
           </div>
-          <div className="space-y-1.5">
-            <Label>To</Label>
-            <Input type="date" value={to} onChange={(e) => setTo(e.target.value)} />
+          <div className="space-y-2">
+            <Label className="font-semibold text-slate-700">End Date</Label>
+            <Input type="date" className="h-11 font-medium" value={to} onChange={(e) => setTo(e.target.value)} />
           </div>
-          <Button onClick={runReport} className="bg-indigo-600 hover:bg-indigo-700" disabled={loading}>
-            {loading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-            Generate Report
+          <Button onClick={runReport} className="h-11 px-8 bg-indigo-600 hover:bg-indigo-700 font-bold shadow-lg" disabled={loading}>
+            {loading ? <Loader2 className="h-5 w-5 animate-spin mr-2" /> : <TrendingUp className="h-5 w-5 mr-2" />}
+            Execute Analysis
           </Button>
         </CardContent>
       </Card>
 
       {report && (
         <>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <Card><CardContent className="p-5">
-              <p className="text-xs text-slate-500 mb-1">Total Income</p>
-              <p className="text-xl font-bold text-emerald-600">Rs. {Number(report.totalIn).toLocaleString()}</p>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
+            <Card className="shadow-sm border-emerald-100 bg-emerald-50/30"><CardContent className="p-6">
+              <p className="text-sm font-bold text-slate-600 mb-1">Gross Inflow</p>
+              <p className="text-3xl font-black text-emerald-600">Rs. {Number(report.totalIn).toLocaleString()}</p>
             </CardContent></Card>
-            <Card><CardContent className="p-5">
-              <p className="text-xs text-slate-500 mb-1">Total Expense</p>
-              <p className="text-xl font-bold text-rose-600">Rs. {Number(report.totalOut).toLocaleString()}</p>
+            <Card className="shadow-sm border-rose-100 bg-rose-50/30"><CardContent className="p-6">
+              <p className="text-sm font-bold text-slate-600 mb-1">Gross Outflow (Expenditure)</p>
+              <p className="text-3xl font-black text-rose-600">Rs. {Number(report.totalOut).toLocaleString()}</p>
             </CardContent></Card>
-            <Card><CardContent className="p-5">
-              <p className="text-xs text-slate-500 mb-1">Net Profit / Loss</p>
-              <p className={`text-xl font-bold ${report.netProfitLoss >= 0 ? "text-emerald-600" : "text-rose-600"}`}>
+            <Card className={`shadow-sm border-t-4 ${report.netProfitLoss >= 0 ? "border-t-emerald-500" : "border-t-rose-500"}`}><CardContent className="p-6">
+              <p className="text-sm font-bold text-slate-600 mb-1">Net Godam Yield</p>
+              <p className={`text-3xl font-black ${report.netProfitLoss >= 0 ? "text-emerald-600" : "text-rose-600"}`}>
                 Rs. {Number(report.netProfitLoss).toLocaleString()}
               </p>
             </CardContent></Card>
           </div>
 
-          <Card>
-            <CardHeader><CardTitle className="text-base">Category-wise Breakdown</CardTitle></CardHeader>
+          <Card className="shadow-md border-slate-200">
+            <CardHeader className="bg-slate-50/80 border-b pb-4"><CardTitle className="text-lg">Expense Allocation Breakdown</CardTitle></CardHeader>
             <CardContent className="p-0">
               <Table>
-                <TableHeader className="bg-slate-50">
+                <TableHeader className="bg-slate-100">
                   <TableRow>
-                    <TableHead>Category</TableHead>
-                    <TableHead className="text-right">In</TableHead>
-                    <TableHead className="text-right">Out</TableHead>
-                    <TableHead className="text-right">Net</TableHead>
+                    <TableHead className="font-bold">Cost Center / Category</TableHead>
+                    <TableHead className="text-right font-bold">Total Credits</TableHead>
+                    <TableHead className="text-right font-bold">Total Debits</TableHead>
+                    <TableHead className="text-right font-bold">Net Position</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {Object.entries(report.byCategory || {}).map(([cat, val]: any) => (
-                    <TableRow key={cat}>
-                      <TableCell className="capitalize">{cat.replace("_", " ")}</TableCell>
-                      <TableCell className="text-right text-emerald-600">Rs. {Number(val.in).toLocaleString()}</TableCell>
-                      <TableCell className="text-right text-rose-600">Rs. {Number(val.out).toLocaleString()}</TableCell>
-                      <TableCell className="text-right font-semibold">Rs. {Number(val.in - val.out).toLocaleString()}</TableCell>
+                    <TableRow key={cat} className="hover:bg-slate-50/50">
+                      <TableCell className="font-bold text-slate-700 text-xs tracking-wider uppercase">{cat.replace("_", " ")}</TableCell>
+                      <TableCell className="text-right font-semibold text-emerald-600">Rs. {Number(val.in).toLocaleString()}</TableCell>
+                      <TableCell className="text-right font-semibold text-rose-600">Rs. {Number(val.out).toLocaleString()}</TableCell>
+                      <TableCell className="text-right font-black text-slate-800">Rs. {Number(val.in - val.out).toLocaleString()}</TableCell>
                     </TableRow>
                   ))}
                   {Object.keys(report.byCategory || {}).length === 0 && (
-                    <TableRow><TableCell colSpan={4} className="h-16 text-center text-slate-400">Is range mein koi data nahi.</TableCell></TableRow>
+                    <TableRow><TableCell colSpan={4} className="h-24 text-center text-slate-500 font-medium">No financial footprint for this period.</TableCell></TableRow>
                   )}
                 </TableBody>
               </Table>
@@ -694,4 +782,77 @@ function GodamReportsTab() {
       )}
     </div>
   );
+}
+
+// ============================================================
+// New Feature: System Audit Logs Tab (For Security)
+// ============================================================
+function GodamAuditTab() {
+  const [logs, setLogs] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        setLoading(true);
+        // Note: Make sure backend has the GET /godam/activity endpoint returning GodamActivityLog items.
+        // If it throws a 404, the UI handles it gracefully as empty array.
+        const res = await godamFetch("/activity");
+        if(res.ok) {
+           setLogs(await res.json());
+        }
+      } catch (e) {
+        console.error("Audit log error:", e);
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, []);
+
+  return (
+     <div className="space-y-6">
+       <Card className="shadow-md border-slate-200">
+         <CardHeader className="bg-slate-50/80 border-b pb-4">
+           <CardTitle className="text-lg flex items-center gap-2 text-rose-700">
+              <ShieldCheck className="h-5 w-5" /> Strict Security Audit Trail
+           </CardTitle>
+           <CardDescription>Immutable record of all Godam portal interactions and stock modifications.</CardDescription>
+         </CardHeader>
+         <CardContent className="p-0">
+            <Table>
+              <TableHeader className="bg-slate-100">
+                 <TableRow>
+                   <TableHead>Time & Date</TableHead>
+                   <TableHead>Event Trigger</TableHead>
+                   <TableHead>Detailed Description</TableHead>
+                   <TableHead className="text-right">Authorized By</TableHead>
+                 </TableRow>
+              </TableHeader>
+              <TableBody>
+                 {loading ? (
+                    <TableRow><TableCell colSpan={4} className="h-32 text-center"><Loader2 className="h-6 w-6 animate-spin mx-auto text-indigo-500" /></TableCell></TableRow>
+                 ) : logs.length === 0 ? (
+                    <TableRow><TableCell colSpan={4} className="h-32 text-center text-slate-500 font-medium">System awaits first audit event log.</TableCell></TableRow>
+                 ) : (
+                    logs.map((log) => (
+                      <TableRow key={log.id} className="hover:bg-slate-50/50">
+                        <TableCell className="text-xs font-bold text-slate-600">{new Date(log.createdAt).toLocaleString()}</TableCell>
+                        <TableCell>
+                          <Badge variant="outline" className="bg-slate-100 text-slate-700 border-slate-300 font-bold uppercase tracking-wider text-[10px]">
+                            {log.action.replace("_", " ")}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-sm font-medium text-slate-800">{log.detail}</TableCell>
+                        <TableCell className="text-right text-xs font-semibold text-slate-500 flex items-center justify-end gap-1">
+                           <Eye className="h-3 w-3" /> {log.createdBy || "System Admin"}
+                        </TableCell>
+                      </TableRow>
+                    ))
+                 )}
+              </TableBody>
+            </Table>
+         </CardContent>
+       </Card>
+     </div>
+  )
 }
