@@ -145,7 +145,7 @@ export class ProductsService {
   async getAllProducts() {
     return this.prisma.product.findMany({
       where: { deleted_at: null }, // Sirf active items
-      orderBy: { created_at: 'desc' }, // 'createdAt' ko 'created_at' mein update kiya assuming snake_case
+      orderBy: { createdAt: 'desc' }, // 🔴 VIP FIX: 'created_at' ko 'createdAt' kiya
       include: { category: true, brand: true },
     });
   }

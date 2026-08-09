@@ -18,14 +18,10 @@ export class ProductsController {
 
   // 📦 Get All Products with Deep Relations (Brands, Categories)
   @Get()
-  async getAllProducts(
-    @Query('page') page: string = '1',
-    @Query('limit') limit: string = '50',
-    @Query('categoryId') categoryId?: string,
-    @Query('brandId') brandId?: string
-  ) {
+  async getAllProducts() {
     try {
-      return await this.productsService.getAllProducts(Number(page), Number(limit), categoryId, brandId);
+      // 🔴 VIP FIX: Extra arguments remove kar diye hain
+      return await this.productsService.getAllProducts(); 
     } catch (error: any) {
       throw new HttpException(error.message, HttpStatus.INTERNAL_SERVER_ERROR);
     }
