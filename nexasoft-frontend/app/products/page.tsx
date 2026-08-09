@@ -1,32 +1,33 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from "react";
-import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import {
   Search, Plus, Package, Trash2, Pencil, Loader2,
-  ChevronDown, ChevronRight, Barcode, Printer, Tag, FileText, User, ShoppingCart
+  ChevronDown, ChevronRight, Barcode, Printer, Tag, FileText, User, ShoppingCart,
+  AlertTriangle, CheckCircle2, TrendingUp, HelpCircle
 } from "lucide-react";
 
-// Yahan maine explicitly live link daal diya hai taake local aur live ka masla hi na rahe.
+// Enterprise API URL config
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "https://nexasoft-business-software-production.up.railway.app/api";
 
 const emptyForm = { name: "", salePrice: "", purchasePrice: "", barcode: "", stock: "", categoryId: "", isSerialized: false };
 
 const serialStatusStyle: Record<string, string> = {
-  IN_STOCK: "bg-emerald-100 text-emerald-700 border-emerald-200",
-  SOLD: "bg-indigo-100 text-indigo-700 border-indigo-200",
-  RESERVED: "bg-amber-100 text-amber-700 border-amber-200",
-  RETURNED: "bg-slate-200 text-slate-700 border-slate-300",
-  IN_REPAIR: "bg-purple-100 text-purple-700 border-purple-200",
-  DAMAGED: "bg-rose-100 text-rose-700 border-rose-200",
-  LOST: "bg-rose-100 text-rose-700 border-rose-200",
-  RMA: "bg-rose-100 text-rose-700 border-rose-200",
+  IN_STOCK: "bg-emerald-100 text-emerald-800 border-emerald-300 shadow-sm",
+  SOLD: "bg-indigo-100 text-indigo-800 border-indigo-300 shadow-sm",
+  RESERVED: "bg-amber-100 text-amber-800 border-amber-300 shadow-sm",
+  RETURNED: "bg-slate-200 text-slate-800 border-slate-300 shadow-sm",
+  IN_REPAIR: "bg-purple-100 text-purple-800 border-purple-300 shadow-sm",
+  DAMAGED: "bg-rose-100 text-rose-800 border-rose-300 shadow-sm",
+  LOST: "bg-rose-100 text-rose-800 border-rose-300 shadow-sm",
+  RMA: "bg-rose-100 text-rose-800 border-rose-300 shadow-sm",
 };
 
 function mapRow(p: any) {
@@ -190,7 +191,7 @@ export default function ProductsPage() {
     setFormError("");
 
     if (!form.name || !form.salePrice || !form.purchasePrice) {
-      setFormError("Naam, Sale Price, aur Purchase Price teeno zaroori hain!");
+      setFormError("Product Name, Sale Price, aur Purchase Price laazmi hain!");
       return;
     }
 
@@ -232,25 +233,25 @@ export default function ProductsPage() {
   }
 
   async function handleDelete(id: string) {
-    if (!window.confirm("Kya aap waqai is product ko delete karna chahte hain?")) return;
+    if (!window.confirm("🚨 WARNING: Kya aap waqai is product ko delete karna chahte hain? Iska data permanently remove ho jayega!")) return;
     try {
       const res = await fetch(`${API_URL}/products/${id}`, { method: "DELETE" });
       const result = await res.json();
       if (!res.ok) throw new Error(result.message || "Failed to delete product");
       setRows(rows.filter((r) => r.id !== id));
     } catch (error: any) {
-      alert(error.message);
+      alert(`Error: ${error.message}`);
     }
   }
 
   const openPrintModal = (product: any, e: React.MouseEvent) => {
     e.stopPropagation();
     if (product.isSerialized) {
-      alert("Ye serialized product hai — iske liye alag se Serial Number labels chahiye honge, master barcode print nahi hota.");
+      alert("⚠️ Ye serialized product hai — iske liye alag se Serial Number labels chahiye honge, master barcode print nahi hota.");
       return;
     }
     if (!product.barcode || product.barcode === "-") {
-      alert("Is product ka koi Barcode nahi hai! Pehle edit karke barcode add karein.");
+      alert("⚠️ Is product ka koi Barcode nahi hai! Pehle edit karke barcode add karein.");
       return;
     }
     setPrintProduct(product);
@@ -317,28 +318,35 @@ export default function ProductsPage() {
   };
 
   return (
-    <div className="flex h-full flex-col gap-6 p-6 bg-slate-50 overflow-y-auto">
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+    <div className="flex h-full flex-col gap-6 p-6 lg:p-8 bg-slate-50 overflow-y-auto">
+      
+      {/* HEADER SECTION */}
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 bg-white p-6 rounded-xl shadow-sm border border-slate-200">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight text-slate-900">Products & Inventory</h1>
-          <p className="text-sm text-slate-500 mt-1">Naam, Barcode ya Serial Number scan karein. Row par click karke details dekhein.</p>
+          <h1 className="text-3xl font-extrabold tracking-tight text-slate-900 flex items-center gap-3">
+            <Package className="h-8 w-8 text-indigo-600" />
+            Master Product Catalog
+            <Badge variant="outline" className="bg-indigo-50 text-indigo-700 border-indigo-200 ml-2 shadow-sm font-bold">Main Shop</Badge>
+          </h1>
+          <p className="text-sm text-slate-500 mt-1 font-medium">Centralized Database for POS Sales, Inventory & Godam Tracking.</p>
         </div>
-        <Button className="bg-indigo-600 hover:bg-indigo-700 gap-2 font-bold shadow-sm" onClick={openAddDialog}>
-          <Plus className="h-4 w-4" /> Add New Product
+        <Button className="bg-indigo-600 hover:bg-indigo-700 h-11 px-6 gap-2 font-bold shadow-md transition-all hover:scale-105" onClick={openAddDialog}>
+          <Plus className="h-5 w-5" /> Add New Product
         </Button>
       </div>
 
-      <Card className="shadow-sm border-slate-200 bg-white">
-        <CardHeader className="border-b bg-transparent pb-4">
-          <div className="relative flex-1 max-w-xl">
+      {/* TABLE CARD */}
+      <Card className="shadow-md border-slate-200 bg-white">
+        <CardHeader className="border-b bg-slate-50/50 pb-4">
+          <div className="relative flex-1 max-w-2xl">
             {isSearching ? (
-              <Loader2 className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-indigo-500 animate-spin" />
+              <Loader2 className="absolute left-3.5 top-1/2 h-5 w-5 -translate-y-1/2 text-indigo-500 animate-spin" />
             ) : (
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+              <Search className="absolute left-3.5 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
             )}
             <Input
-              placeholder="Naam, Barcode ya Serial Number yahan scan karein..."
-              className="pl-9 bg-slate-50 border-slate-200 text-base h-11 focus-visible:ring-indigo-400"
+              placeholder="Search by Product Name, Master Barcode, or specific Hardware Serial Number..."
+              className="pl-11 bg-white border-slate-300 text-base h-12 shadow-inner focus-visible:ring-indigo-500 font-medium"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               autoFocus
@@ -347,25 +355,31 @@ export default function ProductsPage() {
         </CardHeader>
         <CardContent className="p-0">
           <Table>
-            <TableHeader className="bg-slate-50">
+            <TableHeader className="bg-slate-100">
               <TableRow>
                 <TableHead className="w-[40px]"></TableHead>
-                <TableHead className="w-[60px]">Icon</TableHead>
-                <TableHead className="font-bold text-slate-600">Product</TableHead>
-                <TableHead className="font-bold text-slate-600">Type</TableHead>
-                <TableHead className="font-bold text-slate-600">Barcode</TableHead>
-                <TableHead className="text-right font-bold text-slate-600">Purchase</TableHead>
-                <TableHead className="text-right font-bold text-slate-600">Sale Price</TableHead>
-                <TableHead className="text-right font-bold text-slate-600">Margin</TableHead>
-                <TableHead className="text-center font-bold text-slate-600">Stock</TableHead>
-                <TableHead className="w-[140px] text-center font-bold text-slate-600">Actions</TableHead>
+                <TableHead className="w-[60px]"></TableHead>
+                <TableHead className="font-bold text-slate-700">Product Identity</TableHead>
+                <TableHead className="font-bold text-slate-700">Tracking Type</TableHead>
+                <TableHead className="font-bold text-slate-700">Master Barcode</TableHead>
+                <TableHead className="text-right font-bold text-slate-700">Cost Price</TableHead>
+                <TableHead className="text-right font-bold text-slate-700">Retail Price</TableHead>
+                <TableHead className="text-right font-bold text-slate-700">Est. Margin</TableHead>
+                <TableHead className="text-center font-bold text-slate-700">Shop Stock</TableHead>
+                <TableHead className="w-[140px] text-center font-bold text-slate-700">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {isLoading ? (
-                <TableRow><TableCell colSpan={10} className="h-32 text-center"><Loader2 className="h-6 w-6 animate-spin mx-auto text-indigo-500" /></TableCell></TableRow>
+                <TableRow><TableCell colSpan={10} className="h-40 text-center"><Loader2 className="h-8 w-8 animate-spin mx-auto text-indigo-500" /></TableCell></TableRow>
               ) : rows.length === 0 ? (
-                <TableRow><TableCell colSpan={10} className="h-32 text-center text-slate-400"><Package className="h-10 w-10 mx-auto mb-2 opacity-20" />No products found.</TableCell></TableRow>
+                <TableRow>
+                  <TableCell colSpan={10} className="h-40 text-center text-slate-500">
+                    <Package className="h-12 w-12 mx-auto mb-3 opacity-20" />
+                    <p className="font-bold text-lg">No inventory records found.</p>
+                    <p className="text-sm mt-1">Try adjusting your search or add a new product.</p>
+                  </TableCell>
+                </TableRow>
               ) : (
                 rows.map((row) => {
                   const margin = row.salePrice - row.purchasePrice;
@@ -374,46 +388,52 @@ export default function ProductsPage() {
 
                   return (
                     <React.Fragment key={row.id}>
-                      <TableRow className={`cursor-pointer hover:bg-slate-50 transition-colors ${isExpanded ? 'bg-slate-50' : ''}`} onClick={() => toggleExpand(row.id)}>
+                      <TableRow className={`cursor-pointer hover:bg-indigo-50/40 transition-colors ${isExpanded ? 'bg-indigo-50/40' : ''}`} onClick={() => toggleExpand(row.id)}>
                         <TableCell>
-                          {isExpanded ? <ChevronDown className="h-4 w-4 text-slate-500" /> : <ChevronRight className="h-4 w-4 text-slate-400" />}
+                          {isExpanded ? <ChevronDown className="h-5 w-5 text-indigo-500" /> : <ChevronRight className="h-5 w-5 text-slate-400" />}
                         </TableCell>
                         <TableCell>
-                          <div className="flex h-10 w-10 items-center justify-center rounded-md bg-indigo-50 border border-indigo-100">
-                            <Tag className="h-5 w-5 text-indigo-500" />
+                          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-white shadow-sm border border-slate-200">
+                            <Tag className="h-5 w-5 text-indigo-600" />
                           </div>
                         </TableCell>
                         <TableCell>
-                          <p className="font-bold text-slate-800 line-clamp-1">{row.name}</p>
+                          <p className="font-bold text-slate-900 line-clamp-1 text-base">{row.name}</p>
                           {(row.categoryName || row.brandName) && (
-                            <p className="text-xs text-slate-400 mt-0.5">
-                              {[row.brandName, row.categoryName].filter(Boolean).join(" · ")}
+                            <p className="text-xs text-slate-500 mt-1 font-semibold uppercase tracking-wider">
+                              {[row.brandName, row.categoryName].filter(Boolean).join(" • ")}
                             </p>
                           )}
                         </TableCell>
                         <TableCell>
                           {row.isSerialized ? (
-                            <Badge className="bg-indigo-100 text-indigo-700 border-indigo-200">Serialized</Badge>
+                            <Badge className="bg-indigo-100 text-indigo-800 border-indigo-200 shadow-sm font-bold">SERIALIZED</Badge>
                           ) : (
-                            <Badge variant="outline" className="text-slate-500">Bulk/Barcode</Badge>
+                            <Badge variant="outline" className="text-slate-600 bg-slate-100 font-bold">BULK / BARCODE</Badge>
                           )}
                         </TableCell>
-                        <TableCell><Badge variant="outline" className="font-mono text-slate-600 bg-white shadow-sm">{row.barcode}</Badge></TableCell>
-                        <TableCell className="text-right text-slate-500 font-medium">Rs. {row.purchasePrice.toLocaleString()}</TableCell>
-                        <TableCell className="text-right font-black text-slate-900">Rs. {row.salePrice.toLocaleString()}</TableCell>
-                        <TableCell className={`text-right font-bold ${margin < 0 ? "text-rose-600" : "text-emerald-600"}`}>Rs. {margin.toLocaleString()}</TableCell>
+                        <TableCell>
+                          <Badge variant="outline" className="font-mono text-slate-700 bg-white shadow-sm border-slate-300 font-bold">{row.barcode}</Badge>
+                        </TableCell>
+                        <TableCell className="text-right text-slate-600 font-semibold">Rs. {row.purchasePrice.toLocaleString()}</TableCell>
+                        <TableCell className="text-right font-black text-slate-900 text-lg">Rs. {row.salePrice.toLocaleString()}</TableCell>
+                        <TableCell className={`text-right font-black ${margin <= 0 ? "text-rose-600" : "text-emerald-600"}`}>
+                          {margin > 0 ? "+" : ""}Rs. {margin.toLocaleString()}
+                        </TableCell>
                         <TableCell className="text-center">
-                          <Badge className="shadow-sm" variant={row.stock < 5 ? "destructive" : "secondary"}>{row.stock}</Badge>
+                          <Badge className={`shadow-sm px-3 py-1 font-black ${row.stock <= 0 ? 'bg-rose-100 text-rose-800 border-rose-300' : row.stock < 5 ? 'bg-amber-100 text-amber-800 border-amber-300' : 'bg-emerald-100 text-emerald-800 border-emerald-300'}`} variant="outline">
+                            {row.stock}
+                          </Badge>
                         </TableCell>
                         <TableCell onClick={(e) => e.stopPropagation()}>
-                          <div className="flex items-center justify-center gap-1">
-                            <Button variant="ghost" size="icon" className="text-blue-500 hover:bg-blue-50" onClick={(e) => openPrintModal(row, e)}>
+                          <div className="flex items-center justify-center gap-1.5">
+                            <Button variant="outline" size="icon" className="text-blue-600 hover:bg-blue-50 hover:border-blue-200 transition-colors" onClick={(e) => openPrintModal(row, e)} title="Print Barcodes">
                               <Printer className="h-4 w-4" />
                             </Button>
-                            <Button variant="ghost" size="icon" className="text-indigo-500 hover:bg-indigo-50" onClick={() => openEditDialog(row)}>
+                            <Button variant="outline" size="icon" className="text-indigo-600 hover:bg-indigo-50 hover:border-indigo-200 transition-colors" onClick={() => openEditDialog(row)} title="Edit Product">
                               <Pencil className="h-4 w-4" />
                             </Button>
-                            <Button variant="ghost" size="icon" className="text-rose-500 hover:bg-rose-50" onClick={() => handleDelete(row.id)}>
+                            <Button variant="outline" size="icon" className="text-rose-600 hover:bg-rose-50 hover:border-rose-200 transition-colors" onClick={() => handleDelete(row.id)} title="Delete Product">
                               <Trash2 className="h-4 w-4" />
                             </Button>
                           </div>
@@ -421,19 +441,19 @@ export default function ProductsPage() {
                       </TableRow>
 
                       {hasSearchMatch && (
-                        <TableRow className="bg-emerald-50/50">
-                          <TableCell colSpan={10} className="px-6 py-3 border-l-4 border-l-emerald-500">
-                            <p className="text-xs font-bold text-emerald-700 mb-2 uppercase tracking-wider flex items-center gap-1">
-                              <Barcode className="h-3 w-3" /> Serial Match Found (Click to view history)
+                        <TableRow className="bg-emerald-50">
+                          <TableCell colSpan={10} className="px-6 py-4 border-l-4 border-l-emerald-500">
+                            <p className="text-xs font-black text-emerald-800 mb-2 uppercase tracking-wider flex items-center gap-2">
+                              <CheckCircle2 className="h-4 w-4" /> Search Match: Serial Numbers Found
                             </p>
                             <div className="flex flex-wrap gap-2">
                               {row.matchedSerials.map((s: any) => (
                                 <button
                                   key={s.serial_number}
                                   onClick={() => openSerialDetail(s.serial_number)}
-                                  className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-mono font-bold shadow-sm transition-transform hover:scale-105 border ${serialStatusStyle[s.status] || "bg-white text-slate-700 border-slate-200"}`}
+                                  className={`inline-flex items-center gap-2 rounded-md px-3 py-2 text-xs font-mono font-bold transition-transform hover:scale-105 border ${serialStatusStyle[s.status] || "bg-white text-slate-700 border-slate-300 shadow-sm"}`}
                                 >
-                                  {s.serial_number} — {s.status.replace("_", " ")}
+                                  <Barcode className="h-3 w-3 opacity-50"/> {s.serial_number} — {s.status.replace("_", " ")}
                                 </button>
                               ))}
                             </div>
@@ -443,27 +463,32 @@ export default function ProductsPage() {
 
                       {isExpanded && (
                         <TableRow className="bg-slate-50 border-b-2 border-b-slate-200">
-                          <TableCell colSpan={10} className="px-6 py-4 border-l-4 border-l-indigo-400 shadow-inner">
+                          <TableCell colSpan={10} className="px-6 py-6 border-l-4 border-l-indigo-500 shadow-inner">
                             {loadingSerials === row.id ? (
-                              <div className="flex items-center gap-2 text-sm font-semibold text-indigo-500">
-                                <Loader2 className="h-4 w-4 animate-spin" /> Fetching serials...
+                              <div className="flex justify-center items-center gap-2 text-sm font-bold text-indigo-600 py-4">
+                                <Loader2 className="h-6 w-6 animate-spin" /> Retrieving hardware serials from database...
                               </div>
                             ) : (serialsMap[row.id]?.length ?? 0) === 0 ? (
-                              <p className="text-sm font-semibold text-slate-500 italic">No available serials in stock for this product.</p>
+                              <div className="bg-white p-6 rounded-lg border border-slate-200 text-center text-slate-500 shadow-sm">
+                                <FileText className="h-8 w-8 mx-auto mb-2 opacity-30"/>
+                                <p className="font-bold">No Active Serials Found</p>
+                                <p className="text-xs mt-1">This product currently has zero serial numbers registered in the main shop stock.</p>
+                              </div>
                             ) : (
-                              <div>
-                                <p className="text-xs font-bold text-slate-600 mb-3 uppercase tracking-wider">
-                                  {serialsMap[row.id].length} Available Units (In Stock)
+                              <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+                                <p className="text-xs font-black text-slate-700 mb-3 uppercase tracking-wider border-b pb-2 flex items-center gap-2">
+                                  <Package className="h-4 w-4 text-indigo-500"/>
+                                  Active In-Stock Serials ({serialsMap[row.id].length} Units)
                                 </p>
-                                <div className="flex flex-wrap gap-2">
+                                <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-2 max-h-[300px] overflow-y-auto custom-scrollbar p-1">
                                   {serialsMap[row.id].map((s) => (
                                     <button
                                       key={s.serial_number}
                                       onClick={() => openSerialDetail(s.serial_number)}
-                                      className="inline-flex items-center gap-1.5 rounded-md bg-white border border-slate-300 shadow-sm px-3 py-1.5 text-xs font-mono font-semibold text-slate-700 transition-all hover:border-indigo-400 hover:text-indigo-700 hover:shadow"
+                                      className="flex items-center justify-between gap-1.5 rounded bg-slate-50 border border-slate-300 shadow-sm px-2 py-2 text-[11px] font-mono font-bold text-slate-800 transition-all hover:border-indigo-500 hover:bg-indigo-50 hover:text-indigo-700 hover:shadow"
                                     >
-                                      <Barcode className="h-3 w-3 text-slate-400" />
-                                      {s.serial_number}
+                                      <span>{s.serial_number}</span>
+                                      <ChevronRight className="h-3 w-3 opacity-30"/>
                                     </button>
                                   ))}
                                 </div>
@@ -481,174 +506,216 @@ export default function ProductsPage() {
         </CardContent>
       </Card>
 
+      {/* VIP ADD/EDIT PRODUCT DIALOG */}
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-        <DialogContent className="sm:max-w-[550px]">
-          <form onSubmit={handleSubmit}>
-            <DialogHeader>
-              <DialogTitle className="text-xl">{editingId ? "Edit Product Details" : "Add New Product"}</DialogTitle>
-            </DialogHeader>
-            <div className="grid grid-cols-2 gap-4 py-4">
-              {formError && <div className="col-span-2 rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700 font-bold border border-rose-200">{formError}</div>}
+        <DialogContent className="sm:max-w-[600px] p-0 overflow-hidden bg-slate-50">
+          <form onSubmit={handleSubmit} className="flex flex-col h-full">
+            
+            <div className="bg-indigo-600 px-6 py-5 text-white">
+              <DialogTitle className="text-2xl font-extrabold flex items-center gap-2">
+                {editingId ? <Pencil className="h-6 w-6"/> : <Package className="h-6 w-6"/>}
+                {editingId ? "Edit Product Identity" : "Register New Product"}
+              </DialogTitle>
+              <DialogDescription className="text-indigo-100 mt-1 font-medium text-xs">
+                Enter details carefully. This data dictates pricing across POS and Godam transfers.
+              </DialogDescription>
+            </div>
 
-              <div className="col-span-2 space-y-1.5">
-                <Label>Product Name <span className="text-rose-500">*</span></Label>
-                <div className="relative">
-                  <Package className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                  <Input className="pl-9 bg-white" placeholder="e.g. SSD 500GB Samsung" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required />
-                </div>
-              </div>
-
-              {/* Serialized Toggle */}
-              <div className="col-span-2 flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5">
-                <div>
-                  <p className="text-sm font-bold text-slate-800">Har unit ka alag Serial Number?</p>
-                  <p className="text-xs text-slate-500">SSD, RAM, Hard Drive jaisi cheezon ke liye "Yes" — cables/accessories ke liye "No"</p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setForm({ ...form, isSerialized: !form.isSerialized })}
-                  className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${form.isSerialized ? "bg-indigo-600" : "bg-slate-300"}`}
-                >
-                  <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform ${form.isSerialized ? "translate-x-5" : "translate-x-0.5"}`} />
-                </button>
-              </div>
-
-              {!form.isSerialized ? (
-                <div className="col-span-2 space-y-1.5">
-                  <Label>Master Barcode (optional)</Label>
-                  <div className="relative">
-                    <Barcode className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                    <Input className="pl-9 bg-white" placeholder="Scan or Type" value={form.barcode} onChange={(e) => setForm({ ...form, barcode: e.target.value })} />
-                  </div>
-                </div>
-              ) : (
-                <div className="col-span-2 rounded-lg bg-indigo-50 px-3 py-2 text-xs text-indigo-700 border border-indigo-100">
-                  Ye serialized product hai — Master Barcode ki zaroorat nahi. Purchase ke waqt har unit ka Serial Number scan karke uski identity banegi.
+            <div className="px-6 py-6 grid grid-cols-2 gap-5">
+              {formError && (
+                <div className="col-span-2 rounded-lg bg-rose-50 px-4 py-3 text-sm text-rose-800 font-bold border border-rose-200 flex items-start gap-2 shadow-sm">
+                  <AlertTriangle className="h-5 w-5 shrink-0 mt-0.5 text-rose-600"/> {formError}
                 </div>
               )}
 
-              <div className="space-y-1.5">
-                <Label>Category</Label>
-                <select className="flex h-10 w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-indigo-400"
+              {/* Product Info Section */}
+              <div className="col-span-2 space-y-2">
+                <Label className="font-bold text-slate-700 text-sm">Official Product Name <span className="text-rose-500">*</span></Label>
+                <Input className="h-11 border-slate-300 bg-white shadow-sm font-semibold text-base focus-visible:ring-indigo-500" placeholder="e.g. Samsung 980 Pro 1TB NVMe" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required />
+              </div>
+
+              <div className="space-y-2 col-span-2 sm:col-span-1">
+                <Label className="font-bold text-slate-700 text-sm">Product Category</Label>
+                <select className="flex h-11 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 font-medium"
                   value={form.categoryId} onChange={(e) => setForm({ ...form, categoryId: e.target.value })}>
-                  <option value="">-- Select Category --</option>
+                  <option value="">-- Uncategorized --</option>
                   {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
                 </select>
               </div>
 
-              <div className="space-y-1.5">
-                <Label>{editingId ? "Current Stock" : "Initial Stock"}</Label>
-                <Input type="number" min="0" value={form.stock} onChange={(e) => setForm({ ...form, stock: e.target.value })} />
+              <div className="space-y-2 col-span-2 sm:col-span-1">
+                <Label className="font-bold text-slate-700 text-sm">{editingId ? "Current Shop Stock" : "Opening Stock"}</Label>
+                <Input type="number" min="0" className="h-11 border-slate-300 bg-white shadow-sm font-bold text-lg" value={form.stock} onChange={(e) => setForm({ ...form, stock: e.target.value })} />
               </div>
 
-              <div className="space-y-1.5">
-                <Label>Purchase Price (PKR) <span className="text-rose-500">*</span></Label>
-                <Input type="number" step="0.01" min="0" value={form.purchasePrice} onChange={(e) => setForm({ ...form, purchasePrice: e.target.value })} required />
-              </div>
-
-              <div className="space-y-1.5">
-                <Label>Sale Price (PKR) <span className="text-rose-500">*</span></Label>
-                <Input type="number" step="0.01" min="0" className="font-bold text-emerald-600" value={form.salePrice} onChange={(e) => setForm({ ...form, salePrice: e.target.value })} required />
-              </div>
-
-              {form.purchasePrice && form.salePrice && (
-                <div className="col-span-2 rounded-lg bg-emerald-50 px-3 py-2 text-sm font-bold text-emerald-700 border border-emerald-100 flex justify-between">
-                  <span>Estimated Profit per Unit:</span>
-                  <span>Rs. {(Number(form.salePrice) - Number(form.purchasePrice)).toLocaleString()}</span>
+              {/* Enterprise Toggle for Serialization */}
+              <div className="col-span-2 rounded-xl border-2 border-slate-200 bg-white p-4 shadow-sm transition-all focus-within:border-indigo-400 mt-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-start gap-3">
+                    <div className={`p-2 rounded-lg ${form.isSerialized ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-100 text-slate-500'}`}>
+                      <Barcode className="h-6 w-6" />
+                    </div>
+                    <div>
+                      <p className="font-extrabold text-slate-800 text-sm">Strict Serial Tracking?</p>
+                      <p className="text-[11px] text-slate-500 font-medium mt-0.5 leading-tight">Enable for IT hardware (SSDs, RAM, Displays).<br/>Disable for bulk accessories (Cables, Covers).</p>
+                    </div>
+                  </div>
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input type="checkbox" className="sr-only peer" checked={form.isSerialized} onChange={() => setForm({ ...form, isSerialized: !form.isSerialized })} />
+                    <div className="w-14 h-7 bg-slate-300 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-indigo-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-6 after:w-6 after:transition-all peer-checked:bg-indigo-600 shadow-inner"></div>
+                  </label>
                 </div>
-              )}
+
+                {!form.isSerialized ? (
+                   <div className="mt-4 pt-4 border-t border-slate-100 animate-in fade-in slide-in-from-top-2">
+                     <Label className="font-bold text-slate-700 text-xs mb-1.5 block">Master Barcode (For Bulk Scanning)</Label>
+                     <Input className="h-11 border-slate-300 bg-slate-50 font-mono tracking-widest text-sm focus-visible:ring-indigo-500" placeholder="Scan or type barcode here..." value={form.barcode} onChange={(e) => setForm({ ...form, barcode: e.target.value })} />
+                   </div>
+                ) : (
+                   <div className="mt-4 pt-3 border-t border-slate-100 animate-in fade-in slide-in-from-top-2 flex items-start gap-2 text-indigo-700 bg-indigo-50 p-3 rounded-lg text-xs font-bold border border-indigo-100">
+                     <HelpCircle className="h-4 w-4 shrink-0 mt-0.5" />
+                     Master barcode is disabled. Each unit will be tracked via its own unique hardware serial number scanned at Godam entry.
+                   </div>
+                )}
+              </div>
+
+              {/* Pricing & Margin VIP Card */}
+              <div className="col-span-2 bg-white rounded-xl border border-slate-200 shadow-sm p-4 grid grid-cols-2 gap-4 mt-2 relative overflow-hidden">
+                <div className="absolute top-0 right-0 p-2 opacity-5"><TrendingUp className="h-24 w-24"/></div>
+                <div className="space-y-2 relative z-10">
+                  <Label className="font-bold text-slate-700 text-xs uppercase tracking-wider">Purchase Cost (PKR) <span className="text-rose-500">*</span></Label>
+                  <Input type="number" step="0.01" min="0" className="h-11 border-slate-300 bg-slate-50 font-black text-lg focus-visible:ring-emerald-500" value={form.purchasePrice} onChange={(e) => setForm({ ...form, purchasePrice: e.target.value })} required />
+                </div>
+                <div className="space-y-2 relative z-10">
+                  <Label className="font-bold text-slate-700 text-xs uppercase tracking-wider">Retail Sale Price (PKR) <span className="text-rose-500">*</span></Label>
+                  <Input type="number" step="0.01" min="0" className="h-11 border-indigo-300 bg-indigo-50 text-indigo-700 font-black text-lg focus-visible:ring-indigo-500" value={form.salePrice} onChange={(e) => setForm({ ...form, salePrice: e.target.value })} required />
+                </div>
+
+                {form.purchasePrice && form.salePrice && (
+                  <div className={`col-span-2 mt-2 px-4 py-3 rounded-lg flex items-center justify-between shadow-inner border font-bold text-sm ${Number(form.salePrice) - Number(form.purchasePrice) >= 0 ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-rose-50 border-rose-200 text-rose-800'}`}>
+                    <span className="flex items-center gap-2"><TrendingUp className="h-4 w-4"/> Est. Profit Margin (Per Unit):</span>
+                    <span className="text-lg">Rs. {(Number(form.salePrice) - Number(form.purchasePrice)).toLocaleString()}</span>
+                  </div>
+                )}
+              </div>
+
             </div>
-            <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)} disabled={isSaving}>Cancel</Button>
-              <Button type="submit" className="bg-indigo-600 hover:bg-indigo-700 font-bold shadow-md" disabled={isSaving}>
-                {isSaving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-                {isSaving ? "Saving..." : "Save Product"}
+
+            <div className="bg-white border-t border-slate-200 px-6 py-4 flex justify-end gap-3 rounded-b-lg">
+              <Button type="button" variant="outline" className="h-11 px-6 font-bold text-slate-600" onClick={() => setIsDialogOpen(false)} disabled={isSaving}>Cancel</Button>
+              <Button type="submit" className="bg-indigo-600 hover:bg-indigo-700 h-11 px-8 font-bold shadow-lg transition-transform hover:scale-105" disabled={isSaving}>
+                {isSaving ? <Loader2 className="h-5 w-5 animate-spin mr-2" /> : <CheckCircle2 className="h-5 w-5 mr-2" />}
+                {isSaving ? "Processing..." : "Confirm & Save Product"}
               </Button>
-            </DialogFooter>
+            </div>
           </form>
         </DialogContent>
       </Dialog>
 
+      {/* PRINT BARCODE MODAL */}
       <Dialog open={isPrintModalOpen} onOpenChange={setIsPrintModalOpen}>
-        <DialogContent className="sm:max-w-[400px]">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Printer className="h-5 w-5 text-indigo-600" /> Print Thermal Labels
-            </DialogTitle>
-          </DialogHeader>
-          <div className="py-4 space-y-4">
-            <div className="bg-slate-50 p-4 rounded-lg border border-slate-200 shadow-inner">
-              <p className="text-sm font-bold text-slate-800">{printProduct?.name}</p>
-              <p className="text-xs text-slate-500 font-mono mt-1 flex items-center gap-1"><Barcode className="h-3 w-3"/> {printProduct?.barcode}</p>
-              <p className="text-sm font-black text-emerald-600 mt-2">Rs. {Number(printProduct?.salePrice).toLocaleString()}</p>
-            </div>
-            <div className="space-y-2">
-              <Label className="font-semibold text-slate-700">Quantity (Number of Stickers)</Label>
-              <Input type="number" min="1" max="500" value={printQuantity} onChange={(e) => setPrintQuantity(parseInt(e.target.value) || 1)} className="font-bold text-lg text-center h-12" />
-              <p className="text-xs text-slate-400 text-center">Size: 50mm x 25mm</p>
+        <DialogContent className="sm:max-w-[420px] p-0 overflow-hidden">
+          <div className="bg-blue-600 px-6 py-4 text-white flex items-center gap-3">
+            <Printer className="h-6 w-6" /> 
+            <div>
+               <DialogTitle className="text-lg font-bold">Print Thermal Labels</DialogTitle>
+               <DialogDescription className="text-blue-100 text-xs font-medium">Generate stickers for retail scanning.</DialogDescription>
             </div>
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setIsPrintModalOpen(false)}>Cancel</Button>
-            <Button className="bg-blue-600 hover:bg-blue-700 gap-2 font-bold shadow-md" onClick={handlePrintBarcodes}>
-              <Printer className="h-4 w-4" /> Print Now
+          <div className="p-6 space-y-5 bg-slate-50">
+            <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm text-center">
+              <p className="text-sm font-extrabold text-slate-800 line-clamp-2">{printProduct?.name}</p>
+              <div className="inline-flex items-center gap-2 mt-3 px-3 py-1.5 bg-slate-100 rounded-md border border-slate-300">
+                 <Barcode className="h-4 w-4 text-slate-500"/>
+                 <span className="text-sm font-mono font-bold text-slate-700 tracking-widest">{printProduct?.barcode}</span>
+              </div>
+              <p className="text-xl font-black text-emerald-600 mt-4">Rs. {Number(printProduct?.salePrice).toLocaleString()}</p>
+            </div>
+            <div className="space-y-2">
+              <Label className="font-bold text-slate-700">Quantity (Number of Stickers to print)</Label>
+              <Input type="number" min="1" max="500" value={printQuantity} onChange={(e) => setPrintQuantity(parseInt(e.target.value) || 1)} className="font-black text-2xl text-center h-14 border-slate-300 focus-visible:ring-blue-500 shadow-inner" />
+              <p className="text-xs text-slate-400 text-center font-medium mt-1">Standard Thermal Size: 50mm x 25mm</p>
+            </div>
+          </div>
+          <div className="bg-white border-t border-slate-200 px-6 py-4 flex justify-end gap-3">
+            <Button variant="outline" className="font-bold" onClick={() => setIsPrintModalOpen(false)}>Cancel</Button>
+            <Button className="bg-blue-600 hover:bg-blue-700 font-bold shadow-md" onClick={handlePrintBarcodes}>
+              <Printer className="h-4 w-4 mr-2" /> Execute Print
             </Button>
-          </DialogFooter>
+          </div>
         </DialogContent>
       </Dialog>
 
+      {/* VIP SERIAL HISTORY TRACKER MODAL */}
       <Dialog open={detailOpen} onOpenChange={setDetailOpen}>
-        <DialogContent className="sm:max-w-[500px]">
-          <DialogHeader className="border-b pb-3">
-            <DialogTitle className="text-xl flex items-center gap-2">
-              <FileText className="h-5 w-5 text-indigo-600" /> Serial Track History
-            </DialogTitle>
-          </DialogHeader>
-          {detailLoading ? (
-            <div className="flex justify-center py-10"><Loader2 className="h-8 w-8 animate-spin text-indigo-500" /></div>
-          ) : !detailData ? (
-            <div className="py-8 text-center text-rose-500 font-semibold bg-rose-50 rounded-lg">Serial record not found!</div>
-          ) : (
-            <div className="space-y-4 py-2 text-sm">
-              <div className="bg-slate-50 p-4 rounded-lg border border-slate-200 grid grid-cols-2 gap-4">
-                <div>
-                  <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Product</p>
-                  <p className="font-bold text-slate-800">{detailData.products?.name}</p>
+        <DialogContent className="sm:max-w-[550px] p-0 overflow-hidden bg-slate-50">
+          <div className="bg-slate-800 px-6 py-4 text-white flex items-center gap-3">
+             <FileText className="h-6 w-6 text-indigo-400" />
+             <div>
+                <DialogTitle className="text-lg font-bold">Asset Tracking Profile</DialogTitle>
+                <DialogDescription className="text-slate-300 text-xs font-medium">Detailed audit log for selected hardware serial.</DialogDescription>
+             </div>
+          </div>
+          <div className="p-6">
+            {detailLoading ? (
+              <div className="flex flex-col items-center justify-center py-10 gap-3">
+                 <Loader2 className="h-8 w-8 animate-spin text-indigo-500" />
+                 <p className="text-sm font-bold text-slate-500">Decrypting serial logs...</p>
+              </div>
+            ) : !detailData ? (
+              <div className="py-10 text-center text-rose-600 bg-rose-50 rounded-xl border border-rose-200 shadow-inner">
+                 <AlertTriangle className="h-10 w-10 mx-auto mb-2 opacity-50"/>
+                 <p className="font-bold text-lg">Record Not Found</p>
+                 <p className="text-sm font-medium">This serial number does not exist in the secure registry.</p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 relative overflow-hidden">
+                  <div className="absolute -right-4 -top-4 opacity-5"><Barcode className="h-32 w-32"/></div>
+                  <div className="relative z-10">
+                    <p className="text-xs font-extrabold text-slate-400 uppercase tracking-widest mb-1">Hardware ID</p>
+                    <p className="text-2xl font-black font-mono text-indigo-700 tracking-tight">{detailData.serial_number}</p>
+                    <p className="text-sm font-bold text-slate-800 mt-1">{detailData.products?.name}</p>
+                  </div>
+                  <div className="text-right relative z-10">
+                    <Badge className={`px-4 py-1.5 text-xs font-bold uppercase tracking-wider ${serialStatusStyle[detailData.status] || "bg-slate-100 text-slate-700"}`}>
+                      {detailData.status?.replace("_", " ")}
+                    </Badge>
+                  </div>
                 </div>
-                <div className="text-right">
-                  <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Serial Number</p>
-                  <p className="font-mono font-bold text-indigo-700">{detailData.serial_number}</p>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {detailData.purchase && (
+                    <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm space-y-3">
+                      <h4 className="font-bold text-slate-800 flex items-center gap-2 text-xs uppercase tracking-wider border-b border-slate-100 pb-2">
+                         <ShoppingCart className="h-4 w-4 text-emerald-500"/> Procurement Data
+                      </h4>
+                      <div className="space-y-1.5 text-sm">
+                         <div className="flex justify-between items-center"><span className="text-slate-500 font-medium">Supplier</span><span className="font-bold text-slate-800 text-right">{detailData.supplier?.name || "N/A"}</span></div>
+                         <div className="flex justify-between items-center"><span className="text-slate-500 font-medium">Invoice #</span><span className="font-mono font-bold text-slate-700">{detailData.purchase.invoice_number}</span></div>
+                      </div>
+                    </div>
+                  )}
+
+                  {detailData.sale && (
+                    <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm space-y-3">
+                      <h4 className="font-bold text-slate-800 flex items-center gap-2 text-xs uppercase tracking-wider border-b border-slate-100 pb-2">
+                         <User className="h-4 w-4 text-blue-500"/> Dispatch / Sale Data
+                      </h4>
+                      <div className="space-y-1.5 text-sm">
+                         <div className="flex justify-between items-center"><span className="text-slate-500 font-medium">Customer</span><span className="font-bold text-slate-800 text-right">{detailData.customer?.name || "Walk-in Counter"}</span></div>
+                         <div className="flex justify-between items-center"><span className="text-slate-500 font-medium">Invoice #</span><span className="font-mono font-bold text-indigo-600">{detailData.sale.invoice_number}</span></div>
+                         <div className="flex justify-between items-center"><span className="text-slate-500 font-medium">Time</span><span className="font-semibold text-slate-700 text-xs">{new Date(detailData.sale.created_at).toLocaleDateString()}</span></div>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
-
-              <div className="flex justify-between items-center border-b pb-3">
-                <span className="font-bold text-slate-600">Current Status</span>
-                <Badge className={`px-3 py-1 text-xs font-bold ${serialStatusStyle[detailData.status] || ""}`}>
-                  {detailData.status?.replace("_", " ")}
-                </Badge>
-              </div>
-
-              {detailData.purchase && (
-                <div className="bg-white p-3 rounded-lg border border-slate-100 shadow-sm space-y-2">
-                  <h4 className="font-bold text-slate-800 flex items-center gap-2 text-xs uppercase tracking-wider border-b pb-2"><ShoppingCart className="h-4 w-4 text-emerald-500"/> Purchase Info</h4>
-                  <div className="flex justify-between"><span className="text-slate-500">Supplier</span><span className="font-semibold">{detailData.supplier?.name || "-"}</span></div>
-                  <div className="flex justify-between"><span className="text-slate-500">Invoice #</span><span className="font-mono">{detailData.purchase.invoice_number}</span></div>
-                </div>
-              )}
-
-              {detailData.sale && (
-                <div className="bg-white p-3 rounded-lg border border-slate-100 shadow-sm space-y-2">
-                  <h4 className="font-bold text-slate-800 flex items-center gap-2 text-xs uppercase tracking-wider border-b pb-2"><User className="h-4 w-4 text-blue-500"/> Sale Info</h4>
-                  <div className="flex justify-between"><span className="text-slate-500">Customer</span><span className="font-semibold">{detailData.customer?.name || "Walk-in"}</span></div>
-                  <div className="flex justify-between"><span className="text-slate-500">Invoice #</span><span className="font-mono text-indigo-600">{detailData.sale.invoice_number}</span></div>
-                  <div className="flex justify-between"><span className="text-slate-500">Date</span><span className="font-medium">{new Date(detailData.sale.created_at).toLocaleString()}</span></div>
-                </div>
-              )}
-            </div>
-          )}
-          <DialogFooter className="border-t pt-3">
-            <Button className="w-full font-bold" variant="outline" onClick={() => setDetailOpen(false)}>Close Window</Button>
-          </DialogFooter>
+            )}
+          </div>
+          <div className="bg-white border-t border-slate-200 px-6 py-4">
+            <Button className="w-full font-bold bg-slate-800 hover:bg-slate-700 h-11 shadow-md" onClick={() => setDetailOpen(false)}>Acknowledge & Close</Button>
+          </div>
         </DialogContent>
       </Dialog>
     </div>
