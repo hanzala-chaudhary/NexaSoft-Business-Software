@@ -11,7 +11,7 @@ import {
   Warehouse, Lock, Loader2, Package, LayoutDashboard, Wallet, TrendingUp,
   TrendingDown, AlertTriangle, PlusCircle, MinusCircle, ArrowDownCircle,
   ArrowUpCircle, ShieldCheck, Activity, ArrowRightLeft, Search, Eye, CheckCircle2,
-  ScanBarcode, HardDrive, XCircle, Crosshair, HelpCircle, List
+  ScanBarcode, HardDrive, XCircle, Crosshair, HelpCircle, List, Trash2
 } from "lucide-react";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
@@ -262,6 +262,7 @@ function GodamStockTab() {
   const [balances, setBalances] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [scanLoading, setScanLoading] = useState(false);
   
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
@@ -298,25 +299,57 @@ function GodamStockTab() {
 
   useEffect(() => { loadAll(); }, []);
 
-  // 🔥 Rapid Barcode Scan Logic
-  const handleBarcodeScan = (e: React.KeyboardEvent<HTMLInputElement>) => {
+  // 🔥 ENTERPRISE: INSTANT PRE-VALIDATION SCANNER 🔥
+  const handleBarcodeScan = async (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter' && scanInput.trim() !== '') {
       e.preventDefault();
       const sn = scanInput.trim();
       
       if (form.serials.includes(sn)) {
         setError(`Duplicate Scan: Serial ${sn} is already in the list!`);
-      } else {
-        setError("");
+        setScanInput("");
+        return;
+      } 
+      
+      setScanLoading(true);
+      setError("");
+      setSuccess("");
+
+      try {
+        // Pre-validate from database instantly!
+        if (form.type === "OUT" || form.type === "TRANSFER") {
+          const res = await godamFetch(`/track-serial/${sn}`);
+          if (!res.ok) throw new Error(`Invalid Scan: Serial '${sn}' is NOT available in Godam!`);
+          const data = await res.json();
+          if (data.status !== 'IN_GODAM') throw new Error(`Invalid Scan: '${sn}' is already ${data.status.replace(/_/g, ' ')}!`);
+          
+          if (form.productName && data.productName.toLowerCase() !== form.productName.toLowerCase()) {
+             throw new Error(`Mismatch: '${sn}' belongs to ${data.productName}, not ${form.productName}!`);
+          }
+        } else if (form.type === "IN") {
+          // Ensure it doesn't already exist globally
+          const res = await godamFetch(`/track-serial/${sn}`);
+          if (res.ok) {
+            const data = await res.json();
+            throw new Error(`Duplicate Scan: '${sn}' already registered in system as ${data.status.replace(/_/g, ' ')}!`);
+          }
+        }
+
+        // If validation passes, add to UI list
         const newSerials = [...form.serials, sn];
         setForm(prev => ({ 
           ...prev, 
           serials: newSerials, 
           quantity: newSerials.length.toString()
         }));
-        setSuccess(`Scanned successfully: ${sn}`);
+        setSuccess(`Verified & Added: ${sn}`);
+      } catch (err: any) {
+        setError(err.message);
+        // Do NOT add bad serial to the list!
+      } finally {
+        setScanLoading(false);
+        setScanInput("");
       }
-      setScanInput("");
     }
   };
 
@@ -407,19 +440,19 @@ function GodamStockTab() {
         </CardHeader>
         <CardContent className="pt-6">
           <form onSubmit={handleSubmit} className="space-y-5">
-            {error && <div className="flex items-center gap-2 rounded-lg bg-rose-50 border border-rose-200 px-4 py-3 text-sm font-medium text-rose-700"><AlertTriangle className="h-4 w-4 shrink-0"/> {error}</div>}
-            {success && <div className="flex items-center gap-2 rounded-lg bg-emerald-50 border border-emerald-200 px-4 py-3 text-sm font-medium text-emerald-700"><CheckCircle2 className="h-4 w-4 shrink-0"/> {success}</div>}
+            {error && <div className="flex items-center gap-2 rounded-lg bg-rose-50 border border-rose-200 px-4 py-3 text-sm font-medium text-rose-700"><AlertTriangle className="h-5 w-5 shrink-0"/> {error}</div>}
+            {success && <div className="flex items-center gap-2 rounded-lg bg-emerald-50 border border-emerald-200 px-4 py-3 text-sm font-medium text-emerald-700"><CheckCircle2 className="h-5 w-5 shrink-0"/> {success}</div>}
 
             <div className="flex gap-2 p-1 bg-slate-100 rounded-lg">
-              <button type="button" onClick={() => { setForm({ ...form, type: "IN" }); setError(""); setSuccess(""); }}
+              <button type="button" onClick={() => { setForm({ ...form, type: "IN", serials: [], quantity: "0" }); setError(""); setSuccess(""); }}
                 className={`flex-1 flex flex-col items-center justify-center gap-1 rounded-md px-2 py-3 text-xs font-bold transition-all ${form.type === "IN" ? "bg-white shadow-sm text-emerald-600 ring-1 ring-emerald-200" : "text-slate-500 hover:text-slate-700 hover:bg-slate-200/50"}`}>
                 <ArrowDownCircle className="h-5 w-5 mb-1" /> STOCK IN
               </button>
-              <button type="button" onClick={() => { setForm({ ...form, type: "OUT" }); setError(""); setSuccess(""); }}
+              <button type="button" onClick={() => { setForm({ ...form, type: "OUT", serials: [], quantity: "0" }); setError(""); setSuccess(""); }}
                 className={`flex-1 flex flex-col items-center justify-center gap-1 rounded-md px-2 py-3 text-xs font-bold transition-all ${form.type === "OUT" ? "bg-white shadow-sm text-rose-600 ring-1 ring-rose-200" : "text-slate-500 hover:text-slate-700 hover:bg-slate-200/50"}`}>
                 <ArrowUpCircle className="h-5 w-5 mb-1" /> STOCK OUT
               </button>
-              <button type="button" onClick={() => { setForm({ ...form, type: "TRANSFER" }); setError(""); setSuccess(""); }}
+              <button type="button" onClick={() => { setForm({ ...form, type: "TRANSFER", serials: [], quantity: "0" }); setError(""); setSuccess(""); }}
                 className={`flex-1 flex flex-col items-center justify-center gap-1 rounded-md px-2 py-3 text-xs font-bold transition-all ${form.type === "TRANSFER" ? "bg-white shadow-sm text-indigo-600 ring-1 ring-indigo-200" : "text-slate-500 hover:text-slate-700 hover:bg-slate-200/50"}`}>
                 <ArrowRightLeft className="h-5 w-5 mb-1" /> TRANSFER
               </button>
@@ -428,7 +461,7 @@ function GodamStockTab() {
             {form.type !== "IN" && (
                <div className="bg-blue-50 text-blue-800 p-3 rounded-md text-xs font-medium border border-blue-200 flex items-start gap-2">
                   <HelpCircle className="h-4 w-4 shrink-0 mt-0.5" />
-                  Accounting Note: Stock Out/Transfer uses the Moving Average cost principle. Per unit average cost will not change, only total inventory valuation decreases.
+                  Accounting Note: Stock Out/Transfer uses Moving Average cost principle. Per unit average cost will not change, only total valuation decreases.
                </div>
             )}
 
@@ -466,25 +499,44 @@ function GodamStockTab() {
               </select>
             </div>
 
-            {/* 🔥 RAPID BARCODE SCANNER 🔥 */}
-            <div className="p-4 bg-indigo-50/50 border border-indigo-100 rounded-lg space-y-3">
-               <Label className="font-bold text-indigo-900 flex items-center gap-2"><ScanBarcode className="h-4 w-4"/> Rapid Barcode Scanning</Label>
-               <Input 
-                 placeholder="Scan Barcode here... (Auto saves)" 
-                 className="h-12 border-indigo-300 focus-visible:ring-indigo-500 bg-white text-lg tracking-widest font-mono shadow-inner"
-                 value={scanInput}
-                 onChange={(e) => setScanInput(e.target.value)}
-                 onKeyDown={handleBarcodeScan}
-               />
+            {/* 🔥 VIP: RAPID PRE-VALIDATED BARCODE SCANNER 🔥 */}
+            <div className="p-4 bg-indigo-50/50 border border-indigo-100 rounded-lg space-y-3 shadow-inner">
+               <Label className="font-bold text-indigo-900 flex items-center gap-2">
+                 <ScanBarcode className="h-4 w-4"/> Enterprise Barcode Scanner
+               </Label>
+               <div className="relative">
+                 <Input 
+                   placeholder="Scan Barcode here... (Auto validates)" 
+                   className="h-12 border-indigo-300 focus-visible:ring-indigo-500 bg-white text-lg tracking-widest font-mono shadow-sm"
+                   value={scanInput}
+                   onChange={(e) => setScanInput(e.target.value)}
+                   onKeyDown={handleBarcodeScan}
+                   disabled={scanLoading || saving}
+                 />
+                 {scanLoading && <Loader2 className="absolute right-3 top-3.5 h-5 w-5 animate-spin text-indigo-500" />}
+               </div>
                
+               {/* 🚀 VIP: PROMINENT DELETE / TRASH UI FOR SCANNED ITEMS 🚀 */}
                {form.serials.length > 0 && (
-                 <div className="mt-2">
-                   <p className="text-xs font-bold text-slate-500 mb-2">Scanned Items ({form.serials.length}):</p>
-                   <div className="flex flex-wrap gap-2 max-h-[120px] overflow-y-auto custom-scrollbar p-1">
+                 <div className="mt-4 border-t border-indigo-100 pt-3">
+                   <div className="flex justify-between items-center mb-2">
+                      <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">Scanned Queue</p>
+                      <Badge variant="outline" className="bg-white text-indigo-600 border-indigo-200">{form.serials.length} Items</Badge>
+                   </div>
+                   
+                   <div className="grid grid-cols-1 gap-2 max-h-[160px] overflow-y-auto custom-scrollbar p-1">
                      {form.serials.map((sn, i) => (
-                       <Badge key={i} variant="secondary" className="bg-white border-slate-300 flex items-center gap-1 font-mono text-xs">
-                         {sn} <XCircle className="h-3 w-3 text-rose-500 cursor-pointer hover:text-rose-700" onClick={() => removeSerial(sn)}/>
-                       </Badge>
+                       <div key={i} className="flex justify-between items-center bg-white border border-slate-200 rounded-md p-2 shadow-sm hover:border-indigo-300 transition-colors">
+                          <span className="font-mono text-sm font-bold text-slate-800">{sn}</span>
+                          <button 
+                            type="button" 
+                            onClick={() => removeSerial(sn)} 
+                            className="flex items-center gap-1 text-rose-500 hover:text-white hover:bg-rose-500 bg-rose-50 px-2 py-1.5 rounded transition-colors shrink-0"
+                            title="Remove Serial from list"
+                          >
+                             <Trash2 className="h-4 w-4" /> <span className="text-xs font-bold">Remove</span>
+                          </button>
+                       </div>
                      ))}
                    </div>
                  </div>
@@ -525,43 +577,43 @@ function GodamStockTab() {
                     <Label className="font-bold text-indigo-900 flex items-center gap-2"><Crosshair className="h-5 w-5"/> Target Serial Tracker</Label>
                     <Input 
                       placeholder="Scan or enter SSD/Hardware Serial Number to locate..." 
-                      className="h-12 border-indigo-300 bg-white focus-visible:ring-indigo-500 font-mono text-lg"
+                      className="h-12 border-indigo-300 bg-white focus-visible:ring-indigo-500 font-mono text-lg shadow-inner"
                       value={trackSN}
                       onChange={(e) => setTrackSN(e.target.value)}
                     />
                  </div>
-                 <Button type="submit" className="h-12 bg-indigo-600 hover:bg-indigo-700 px-8 w-full sm:w-auto" disabled={trackLoading || !trackSN.trim()}>
+                 <Button type="submit" className="h-12 bg-indigo-600 hover:bg-indigo-700 px-8 w-full sm:w-auto shadow-sm" disabled={trackLoading || !trackSN.trim()}>
                     {trackLoading ? <Loader2 className="h-5 w-5 animate-spin" /> : <Search className="h-5 w-5 mr-2" />} Locate Asset
                  </Button>
               </form>
 
               {/* Display Tracking Result */}
               {trackResult && (
-                 <div className="mt-4 pt-4 border-t border-indigo-100">
+                 <div className="mt-4 pt-4 border-t border-indigo-100 animate-in fade-in">
                     {trackResult.success ? (
                        <div className="flex flex-col sm:flex-row justify-between items-center gap-4 bg-white p-4 rounded-lg border border-emerald-200 shadow-sm">
                           <div>
-                             <p className="text-xs text-slate-500 uppercase font-bold">Asset Found</p>
-                             <p className="text-lg font-bold text-slate-800">{trackResult.data.productName}</p>
-                             <p className="text-sm font-mono text-indigo-600 mt-1">SN: {trackResult.data.serialNumber}</p>
+                             <p className="text-xs text-slate-500 uppercase font-bold tracking-wider">Asset Found</p>
+                             <p className="text-lg font-bold text-slate-800 leading-tight">{trackResult.data.productName}</p>
+                             <p className="text-sm font-mono text-indigo-700 font-bold mt-1">SN: {trackResult.data.serialNumber}</p>
                           </div>
                           <div className="text-right">
-                             <Badge className={`text-sm px-4 py-1 ${
+                             <Badge className={`text-sm px-4 py-1.5 shadow-sm ${
                                 trackResult.data.status === 'IN_GODAM' ? 'bg-emerald-100 text-emerald-800 border-emerald-200' :
                                 trackResult.data.status === 'TRANSFERRED_TO_SHOP' ? 'bg-indigo-100 text-indigo-800 border-indigo-200' :
                                 'bg-rose-100 text-rose-800 border-rose-200'
                              }`}>
                                 {trackResult.data.status.replace(/_/g, ' ')}
                              </Badge>
-                             <p className="text-xs text-slate-400 mt-2">Registered: {new Date(trackResult.data.createdAt).toLocaleDateString()}</p>
+                             <p className="text-[11px] font-semibold text-slate-400 mt-2 uppercase">Registered: {new Date(trackResult.data.createdAt).toLocaleDateString()}</p>
                           </div>
                        </div>
                     ) : (
-                       <div className="bg-rose-50 border border-rose-200 text-rose-700 p-4 rounded-lg flex items-center gap-3">
+                       <div className="bg-rose-50 border border-rose-200 text-rose-700 p-4 rounded-lg flex items-center gap-3 shadow-sm">
                           <XCircle className="h-6 w-6"/>
                           <div>
                              <p className="font-bold">Asset Not Found</p>
-                             <p className="text-sm">{trackResult.message}</p>
+                             <p className="text-sm font-medium">{trackResult.message}</p>
                           </div>
                        </div>
                     )}
@@ -579,7 +631,7 @@ function GodamStockTab() {
              </div>
              <div className="relative w-full sm:w-auto">
                 <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-slate-400" />
-                <Input type="text" placeholder="Search item..." className="pl-9 h-9 w-full sm:w-[250px] text-sm focus-visible:ring-indigo-500" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)}/>
+                <Input type="text" placeholder="Search item..." className="pl-9 h-9 w-full sm:w-[250px] text-sm focus-visible:ring-indigo-500 border-slate-300" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)}/>
              </div>
           </CardHeader>
           <CardContent className="p-0 overflow-x-auto">
@@ -604,9 +656,9 @@ function GodamStockTab() {
                       <TableCell>
                          <p className="font-bold text-slate-800">{b.productName}</p>
                          <div className="flex items-center gap-2 mt-1">
-                           {b.brand && <Badge variant="outline" className="text-[10px] bg-slate-100 text-slate-600">{b.brand}</Badge>}
-                           {b.hardwareType && <Badge variant="outline" className="text-[10px] bg-slate-100 text-slate-600">{b.hardwareType}</Badge>}
-                           {b.capacity && <Badge variant="outline" className="text-[10px] bg-indigo-50 text-indigo-700 border-indigo-200">{b.capacity}</Badge>}
+                           {b.brand && <Badge variant="outline" className="text-[10px] bg-slate-100 text-slate-600 font-bold border-slate-200">{b.brand}</Badge>}
+                           {b.hardwareType && <Badge variant="outline" className="text-[10px] bg-slate-100 text-slate-600 font-bold border-slate-200">{b.hardwareType}</Badge>}
+                           {b.capacity && <Badge variant="outline" className="text-[10px] bg-indigo-50 text-indigo-700 font-bold border-indigo-200">{b.capacity}</Badge>}
                          </div>
                       </TableCell>
                       <TableCell className="text-right font-bold text-lg">
@@ -614,12 +666,12 @@ function GodamStockTab() {
                             {b.quantity}
                          </span>
                       </TableCell>
-                      <TableCell className="text-right font-medium text-slate-600">Rs. {Number(b.avgCost).toLocaleString()}</TableCell>
+                      <TableCell className="text-right font-semibold text-slate-600">Rs. {Number(b.avgCost).toLocaleString()}</TableCell>
                       <TableCell className="text-right font-black text-indigo-600">
                         Rs. {(Number(b.quantity) * Number(b.avgCost)).toLocaleString()}
                       </TableCell>
                       <TableCell className="text-center">
-                        <Button variant="ghost" size="sm" className="text-indigo-600 hover:bg-indigo-50 hover:text-indigo-700 font-semibold text-xs" onClick={() => fetchActiveSerials(b.productId, b.productName)}>
+                        <Button variant="ghost" size="sm" className="text-indigo-600 hover:bg-indigo-50 hover:text-indigo-700 font-bold text-xs border border-transparent hover:border-indigo-200" onClick={() => fetchActiveSerials(b.productId, b.productName)}>
                            <List className="h-4 w-4 mr-1"/> View
                         </Button>
                       </TableCell>
@@ -632,14 +684,14 @@ function GodamStockTab() {
         </Card>
       </div>
 
-      {/* VIP CUSTOM MODAL FOR VIEWING SERIALS (NO EXTRA IMPORTS NEEDED) */}
+      {/* VIP CUSTOM MODAL FOR VIEWING SERIALS */}
       {viewSerialsData && (
-         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
             <Card className="w-full max-w-lg shadow-2xl overflow-hidden border-slate-200 animate-in zoom-in-95 duration-200">
                <CardHeader className="bg-slate-800 text-white flex flex-row items-center justify-between py-4">
                   <div>
                      <CardTitle className="text-lg">Active Hardware Serials</CardTitle>
-                     <CardDescription className="text-slate-300 text-xs">{viewSerialsData.productName}</CardDescription>
+                     <CardDescription className="text-slate-300 text-xs mt-1 font-medium">{viewSerialsData.productName}</CardDescription>
                   </div>
                   <Button variant="ghost" className="text-slate-300 hover:text-white hover:bg-slate-700 rounded-full h-8 w-8 p-0" onClick={() => setViewSerialsData(null)}>
                      <XCircle className="h-6 w-6"/>
@@ -656,10 +708,10 @@ function GodamStockTab() {
                      </div>
                   ) : (
                      <div className="max-h-[400px] overflow-y-auto p-4 custom-scrollbar">
-                        <div className="grid grid-cols-2 gap-2">
+                        <div className="grid grid-cols-2 gap-3">
                            {viewSerialsData.serials.map((s: any, idx: number) => (
-                              <div key={idx} className="flex items-center justify-between p-2 border border-slate-200 rounded bg-slate-50 hover:border-indigo-300 hover:bg-indigo-50 transition-colors">
-                                 <span className="font-mono text-sm font-bold text-slate-700">{s.serialNumber}</span>
+                              <div key={idx} className="flex items-center justify-between p-2.5 border border-slate-200 rounded-md bg-slate-50 shadow-sm hover:border-indigo-400 hover:bg-indigo-50 hover:shadow-md transition-all">
+                                 <span className="font-mono text-sm font-black text-slate-700">{s.serialNumber}</span>
                               </div>
                            ))}
                         </div>
@@ -667,7 +719,7 @@ function GodamStockTab() {
                   )}
                </CardContent>
                <div className="p-4 bg-slate-50 border-t border-slate-200 text-right">
-                  <Button onClick={() => setViewSerialsData(null)} className="bg-slate-800 hover:bg-slate-700">Close Window</Button>
+                  <Button onClick={() => setViewSerialsData(null)} className="bg-slate-800 hover:bg-slate-700 font-bold px-6">Close Window</Button>
                </div>
             </Card>
          </div>
@@ -797,7 +849,7 @@ function GodamCashTab() {
                   <TableRow key={t.id} className="hover:bg-slate-50/50">
                     <TableCell className="text-xs font-medium text-slate-500 whitespace-nowrap">{new Date(t.createdAt).toLocaleString()}</TableCell>
                     <TableCell>
-                      <Badge className={`shadow-sm ${t.type === "IN" ? "bg-emerald-100 text-emerald-800 border-emerald-200" : "bg-rose-100 text-rose-800 border-rose-200"}`}>{t.type}</Badge>
+                      <Badge className={`shadow-sm font-bold ${t.type === "IN" ? "bg-emerald-100 text-emerald-800 border-emerald-200" : "bg-rose-100 text-rose-800 border-rose-200"}`}>{t.type}</Badge>
                     </TableCell>
                     <TableCell className="font-bold text-slate-700 text-xs tracking-wider">{t.category.toUpperCase().replace("_", " ")}</TableCell>
                     <TableCell className={`text-right font-black text-lg whitespace-nowrap ${t.type === "IN" ? "text-emerald-600" : "text-rose-600"}`}>
@@ -856,7 +908,7 @@ function GodamReportsTab() {
             {loading ? <Loader2 className="h-5 w-5 animate-spin mr-2" /> : <TrendingUp className="h-5 w-5 mr-2" />}
             Execute Analysis
           </Button>
-          <Button variant="outline" className="h-11 px-6 border-slate-300" onClick={() => window.print()}>
+          <Button variant="outline" className="h-11 px-6 border-slate-300 font-semibold" onClick={() => window.print()}>
             Print / Export
           </Button>
         </CardContent>
