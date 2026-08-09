@@ -19,6 +19,17 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || "https://nexasoft-business-so
 
 const emptyForm = { name: "", salePrice: "", purchasePrice: "", barcode: "", stock: "", categoryId: "", isSerialized: false };
 
+// Fallback robust IT categories so dropdown is never empty
+const DEFAULT_CATEGORIES = [
+  { id: "cat-ssd", name: "SSD / NVMe Storage" },
+  { id: "cat-ram", name: "RAM / Memory" },
+  { id: "cat-cpu", name: "Processors (CPU)" },
+  { id: "cat-mb", name: "Motherboards" },
+  { id: "cat-gpu", name: "Graphics Cards (GPU)" },
+  { id: "cat-psu", name: "Power Supply (PSU)" },
+  { id: "cat-acc", name: "Accessories & Cables" },
+];
+
 const serialStatusStyle: Record<string, string> = {
   IN_STOCK: "bg-emerald-100 text-emerald-800 border-emerald-300 shadow-sm",
   SOLD: "bg-indigo-100 text-indigo-800 border-indigo-300 shadow-sm",
@@ -48,7 +59,7 @@ function mapRow(p: any) {
 
 export default function ProductsPage() {
   const [rows, setRows] = useState<any[]>([]);
-  const [categories, setCategories] = useState<any[]>([]);
+  const [categories, setCategories] = useState<any[]>(DEFAULT_CATEGORIES);
   const [searchQuery, setSearchQuery] = useState("");
   const [isSearching, setIsSearching] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
@@ -95,9 +106,17 @@ export default function ProductsPage() {
   const fetchCategories = async () => {
     try {
       const res = await fetch(`${API_URL}/categories`);
-      if (res.ok) setCategories(await res.json());
+      if (res.ok) {
+        const data = await res.json();
+        if (data && data.length > 0) {
+          // Merge API categories with default ones, avoiding duplicates by name
+          const existingNames = new Set(data.map((c: any) => c.name.toLowerCase()));
+          const missingDefaults = DEFAULT_CATEGORIES.filter(dc => !existingNames.has(dc.name.toLowerCase()));
+          setCategories([...data, ...missingDefaults]);
+        }
+      }
     } catch (error) {
-      console.error("Categories Fetch Error:", error);
+      console.error("Categories Fetch Error, using defaults:", error);
     }
   };
 
@@ -538,8 +557,8 @@ export default function ProductsPage() {
                 <Label className="font-bold text-slate-700 text-sm">Product Category</Label>
                 <select className="flex h-11 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 font-medium"
                   value={form.categoryId} onChange={(e) => setForm({ ...form, categoryId: e.target.value })}>
-                  <option value="">-- Uncategorized --</option>
-                  {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  <option value="">-- Select Category --</option>
+                  {categories.map((c) => <option key={c.id} value={c.id || c.name}>{c.name}</option>)}
                 </select>
               </div>
 
