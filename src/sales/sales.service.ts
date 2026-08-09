@@ -6,25 +6,16 @@ import * as bcrypt from 'bcrypt';
 export class SalesService {
   constructor(private prisma: PrismaService) {}
 
-  // ─── Salesman ID resolve karo (seed se bana hua admin milega) ─────────────
+  // ─── Resolve Salesman ID (Admin Fallback) ─────────────
   private async resolveSalesmanId(requestUserId?: string): Promise<string> {
     if (requestUserId) return requestUserId;
 
-    // User model mein createdAt @map("created_at") hai — client field abhi bhi
-    // camelCase "createdAt" hi hai, DB column snake_case hai.
-    const fallbackUser = await (this.prisma as any).user.findFirst({
-      orderBy: { createdAt: 'asc' },
-    });
-
+    const fallbackUser = await (this.prisma as any).user.findFirst({ orderBy: { createdAt: 'asc' } });
     if (fallbackUser) return fallbackUser.id;
 
-    let role = await (this.prisma as any).role.findFirst({
-      where: { name: 'Super Admin' },
-    });
+    let role = await (this.prisma as any).role.findFirst({ where: { name: 'Super Admin' } });
     if (!role) {
-      role = await (this.prisma as any).role.create({
-        data: { name: 'Super Admin', is_system: true },
-      });
+      role = await (this.prisma as any).role.create({ data: { name: 'Super Admin', is_system: true } });
     }
 
     const newUser = await (this.prisma as any).user.create({
@@ -45,158 +36,145 @@ export class SalesService {
     return newUser.id;
   }
 
-  // ─── SALE CREATE ──────────────────────────────────────────────────────────
+  // ─── SALE CREATE (SERIAL-FIRST POS ENGINE) ──────────────────────────
   async createSale(data: any) {
-    const {
-      items,
-      customerId,
-      customerName,
-      customerPhone,
-      discount = 0,
-      paidAmount = 0,
-      paymentMethod = 'CASH',
-    } = data;
+    const { items, customerName, customerPhone, discount = 0, paidAmount = 0 } = data;
 
-    if (!items || items.length === 0) throw new BadRequestException('Cart is empty!');
+    if (!items || items.length === 0) throw new BadRequestException('Cart is empty. Scan items first.');
 
     const finalUserId = await this.resolveSalesmanId(data.userId);
 
-    return await this.prisma.$transaction(async (prisma) => {
-
-      // ── Customer / Khata ──────────────────────────────────────────────────
+    return await this.prisma.$transaction(async (tx) => {
+      // 1. Handle Customer Data
       let finalCustomerId: string | null = null;
-
-      if (customerId) {
-        finalCustomerId = customerId;
-      } else if (customerPhone || (customerName && customerName !== 'Walk-in Customer')) {
-        const nameToSave = customerName || 'Unknown Customer';
+      if (customerPhone || customerName) {
+        const nameToSave = customerName || 'Walk-in Customer';
         if (customerPhone) {
-          // Customer.phone unique nahi hai schema mein — findFirst use karo
-          const existing = await (prisma as any).customer.findFirst({
-            where: { phone: customerPhone },
-          });
-          finalCustomerId = existing
-            ? existing.id
-            : (await (prisma as any).customer.create({ data: { name: nameToSave, phone: customerPhone } })).id;
+          const existing = await (tx as any).customer.findFirst({ where: { phone: customerPhone } });
+          finalCustomerId = existing ? existing.id : (await (tx as any).customer.create({ data: { name: nameToSave, phone: customerPhone } })).id;
         } else {
-          finalCustomerId = (await (prisma as any).customer.create({ data: { name: nameToSave } })).id;
+          finalCustomerId = (await (tx as any).customer.create({ data: { name: nameToSave } })).id;
         }
       }
 
-      // ── Price calculation ─────────────────────────────────────────────────
+      // 2. Process Cart Items (Group by Product ID for SaleItems)
       let calculatedSubTotal = 0;
+      const productQuantities = new Map<string, { qty: number; totalSalePrice: number }>();
+      
+      // 🔴 VIP FIX: Added explicit string[] types here to resolve the 'never' TS error
+      const serialIds: string[] = [];
+      const serialNumberStrings: string[] = [];
+
       for (const item of items) {
-        calculatedSubTotal += Number(item.salePrice) * Number(item.quantity);
+        if (!item.serialId) throw new BadRequestException('Invalid cart item: Serial ID missing.');
+        
+        calculatedSubTotal += Number(item.price);
+        serialIds.push(item.serialId);
+
+        // Fetch Serial Info & Validate Status
+        const serial = await (tx as any).serialized_products.findUnique({
+          where: { id: item.serialId },
+          select: { product_id: true, status: true, serial_number: true },
+        });
+
+        if (!serial) throw new BadRequestException(`Serial not found in database.`);
+        if (serial.status === 'SOLD') throw new BadRequestException(`Alert! Serial '${serial.serial_number}' is already SOLD.`);
+        
+        serialNumberStrings.push(serial.serial_number);
+
+        const pId = serial.product_id;
+        if (!productQuantities.has(pId)) productQuantities.set(pId, { qty: 0, totalSalePrice: 0 });
+        
+        const pq = productQuantities.get(pId)!;
+        pq.qty += 1;
+        pq.totalSalePrice += Number(item.price);
       }
 
-      const grandTotal      = calculatedSubTotal - Number(discount);
+      const grandTotal = calculatedSubTotal - Number(discount);
       const finalPaidAmount = Number(paidAmount);
+      let paymentStatus = finalPaidAmount <= 0 ? 'PENDING' : finalPaidAmount < grandTotal ? 'PARTIAL' : 'PAID';
+      const invoiceNumber = `INV-${new Date().getFullYear()}${(new Date().getMonth() + 1).toString().padStart(2, '0')}-${Math.floor(1000 + Math.random() * 9000)}`;
 
-      let paymentStatus = 'PAID';
-      if (finalPaidAmount <= 0)              paymentStatus = 'PENDING';
-      else if (finalPaidAmount < grandTotal)  paymentStatus = 'PARTIAL';
-
-      const invoiceNumber = `INV-SALE-${Date.now()}`;
-
-      // ── Sale record ───────────────────────────────────────────────────────
-      const sale = await (prisma as any).sale.create({
+      // 3. Generate Sale Record
+      const sale = await (tx as any).sale.create({
         data: {
           invoice_number: invoiceNumber,
-          total_amount:   grandTotal,
-          discount:       Number(discount),
-          paid_amount:    finalPaidAmount,
-          payment_method: paymentMethod,   // Sale khud bhi payment_method rakhta hai
+          customer_id: finalCustomerId,
+          salesman_id: finalUserId,
+          total_amount: grandTotal,
+          discount: Number(discount),
+          paid_amount: finalPaidAmount,
+          payment_method: 'CASH',
           payment_status: paymentStatus,
-          customer_id:    finalCustomerId,
-          salesman_id:    finalUserId,
+          items: {
+            create: Array.from(productQuantities.entries()).map(([pId, val]) => ({
+              product_id: pId,
+              quantity: val.qty,
+              sale_price: val.totalSalePrice / val.qty, 
+            })),
+          },
         },
       });
 
-      // ── Payment ledger (udhaar & cash) ────────────────────────────────────
+      // 4. Update Payment Ledger
       if (finalPaidAmount > 0) {
-        await (prisma as any).payment.create({
+        await (tx as any).payment.create({
           data: {
-            sale_id:          sale.id,
-            received_by:      finalUserId,       // Payment model mein field "received_by" hai, "salesman_id" nahi
-            amount:           finalPaidAmount,
-            method:           paymentMethod,      // Payment ka field literally "method" hai, "payment_method" nahi
-            type:             'SALE_PAYMENT',
+            sale_id: sale.id,
+            customer_id: finalCustomerId,
+            received_by: finalUserId,
+            amount: finalPaidAmount,
+            method: 'CASH',
+            type: 'SALE_PAYMENT',
             reference_number: `REC-${invoiceNumber}`,
           },
         });
       }
 
-      // ── Inventory & serials ───────────────────────────────────────────────
-      for (const item of items) {
-        const product = await (prisma as any).product.findUnique({
-          where: { id: item.productId },
-        });
-        if (!product) throw new BadRequestException(`Product nahi mili: ${item.productId}`);
-
-        const stock = product.opening_stock ?? 0;
-        if (Number(stock) < item.quantity) {
-          throw new BadRequestException(`"${product.name}" ka stock khatam hai!`);
-        }
-
-        const saleItem = await (prisma as any).saleItem.create({
-          data: {
-            sale_id:    sale.id,
-            product_id: item.productId,
-            quantity:   item.quantity,
-            sale_price: Number(item.salePrice),
-          },
-        });
-
-        const parallelTasks: Promise<any>[] = [
-          (prisma as any).product.update({
-            where: { id: item.productId },
-            data:  { opening_stock: { decrement: item.quantity } },
-          }),
-          // InventoryTransaction model mein koi user/salesman field hi nahi hai
-          (prisma as any).inventoryTransaction.create({
-            data: {
-              product_id: item.productId,
-              type:       'SALE',
-              quantity:   -item.quantity,
-              sale_id:    sale.id,
-              notes:      `Sold via POS — ${invoiceNumber}`,
-            },
-          }),
-        ];
-
-        if (item.serialNumbers?.length > 0) {
-          parallelTasks.push(
-            // Model ka naam "serialized_products" hai, "productSerial" nahi
-            (prisma as any).serialized_products.updateMany({
-              where: {
-                serial_number: { in: item.serialNumbers },
-                product_id: item.productId,
-              },
-              data: {
-                status:          'SOLD',
-                sale_invoice_id: sale.id,
-                sale_item_id:    saleItem.id,
-                customer_id:     finalCustomerId,
-                sale_date:       new Date(),
-                // Note: is model mein "sale_price" field exist hi nahi karta — hata diya
-              },
-            }),
-          );
-        }
-
-        await Promise.all(parallelTasks);
-      }
-
-      const finalSale = await (prisma as any).sale.findUnique({
-        where:   { id: sale.id },
-        include: { customer: true, items: { include: { product: true } } },
+      // 5. Update Serial Statuses & Inventory
+      // Shop inventory (Main DB)
+      await (tx as any).serialized_products.updateMany({
+        where: { id: { in: serialIds } },
+        data: {
+          status: 'SOLD',
+          sale_invoice_id: sale.id,
+          customer_id: finalCustomerId,
+          sale_date: new Date(),
+        },
       });
 
-      return finalSale; // Sale.invoice_number pehle se hi snake_case hai, extra mapping ki zaroorat nahi
+      // Deduct Opening Stock & Log Transaction
+      for (const [pId, val] of Array.from(productQuantities.entries())) {
+        await (tx as any).product.update({
+          where: { id: pId },
+          data: { opening_stock: { decrement: val.qty } },
+        });
+        await (tx as any).inventoryTransaction.create({
+          data: {
+            product_id: pId, type: 'SALE', quantity: -val.qty, sale_id: sale.id, notes: `Sold via POS — ${invoiceNumber}`,
+          },
+        });
+      }
+
+      // 6. SYNC WITH GODAM LOGS (Crucial Integration Step)
+      try {
+        await (tx as any).godamHardwareSerial.updateMany({
+          where: { serialNumber: { in: serialNumberStrings } },
+          data: { status: 'SOLD_FROM_GODAM', updatedAt: new Date() },
+        });
+      } catch (e) {
+        console.warn('Sync warning: Serials not found in Godam tracking.');
+      }
+
+      return {
+        success: true,
+        invoice_number: sale.invoice_number,
+        message: 'Checkout completed successfully!',
+      };
     }, { maxWait: 20000, timeout: 120000 });
   }
 
-  // ─── RETURN ───────────────────────────────────────────────────────────────
+  // ─── QUERIES & RETURNS (Intact from previous logic) ──────────────────────
   async processReturn(saleId: string, data: any) {
     const { itemsToReturn } = data;
     if (!itemsToReturn?.length) throw new BadRequestException('Koi item select nahi kiya!');
@@ -255,7 +233,6 @@ export class SalesService {
             }),
           );
         }
-
         await Promise.all(returnTasks);
       }
 
@@ -269,10 +246,6 @@ export class SalesService {
       });
 
       if (Number(updatedSale.total_amount) <= 0) {
-        // NOTE: schema mein Sale par "order_status" field exist nahi karta.
-        // Sirf payment_status update kar raha hoon. Agar sale ko "cancelled" mark
-        // karna hai to bata do — RecordStatus enum (ACTIVE/INACTIVE/DRAFT/ARCHIVED)
-        // mein se koi status use karna hoga ya migration se naya field add karna hoga.
         await (prisma as any).sale.update({
           where: { id: saleId },
           data:  { payment_status: 'REFUNDED' },
@@ -284,11 +257,9 @@ export class SalesService {
         refundAmount: totalRefundAmount,
         sale:         updatedSale,
       };
-
     }, { maxWait: 20000, timeout: 120000 });
   }
 
-  // ─── QUERIES ──────────────────────────────────────────────────────────────
   async getAllSales() {
     return await (this.prisma as any).sale.findMany({
       orderBy: { created_at: 'desc' },
