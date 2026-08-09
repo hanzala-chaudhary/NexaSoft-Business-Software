@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Req, Query, UnauthorizedException, Headers, HttpException, HttpStatus } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, Query, Headers, HttpException, HttpStatus } from '@nestjs/common';
 import { GodamService } from './godam.service';
 
 @Controller('godam')
@@ -34,10 +34,28 @@ export class GodamController {
     return await this.godamService.getRecentStockEntries();
   }
 
+  // 🔍 NEW: Get all active serials for a specific product
+  @Get('stock/serials/:productId')
+  async getProductSerials(@Headers('x-godam-token') token: string, @Param('productId') productId: string) {
+    this.godamService.verifyToken(token);
+    return await this.godamService.getProductActiveSerials(productId);
+  }
+
+  // 🎯 NEW: Track specific serial number across the entire ecosystem (Fixes 404 Bug)
+  @Get('track-serial/:serial')
+  async trackSerialNumber(@Headers('x-godam-token') token: string, @Param('serial') serial: string) {
+    this.godamService.verifyToken(token);
+    return await this.godamService.trackSerialNumber(serial);
+  }
+
   @Post('stock')
   async processStockEntry(@Headers('x-godam-token') token: string, @Body() body: any) {
-    const decodedToken = this.godamService.verifyToken(token);
-    return await this.godamService.processStockEntry(body, decodedToken);
+    try {
+      const decodedToken = this.godamService.verifyToken(token);
+      return await this.godamService.processStockEntry(body, decodedToken);
+    } catch (error: any) {
+      throw new HttpException(error.message || "Database Transaction Failed", HttpStatus.BAD_REQUEST);
+    }
   }
 
   // 💰 Financial Ledger Endpoints
@@ -49,8 +67,12 @@ export class GodamController {
 
   @Post('cash')
   async processCashTransaction(@Headers('x-godam-token') token: string, @Body() body: any) {
-    const decodedToken = this.godamService.verifyToken(token);
-    return await this.godamService.processCashTransaction(body, decodedToken);
+    try {
+      const decodedToken = this.godamService.verifyToken(token);
+      return await this.godamService.processCashTransaction(body, decodedToken);
+    } catch (error: any) {
+      throw new HttpException(error.message || "Transaction Failed", HttpStatus.BAD_REQUEST);
+    }
   }
 
   // 📈 Advanced Analytics & Reporting

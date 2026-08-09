@@ -8,31 +8,10 @@ import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import {
-  Warehouse,
-  Lock,
-  Loader2,
-  Package,
-  LayoutDashboard,
-  Wallet,
-  TrendingUp,
-  TrendingDown,
-  AlertTriangle,
-  PlusCircle,
-  MinusCircle,
-  ArrowDownCircle,
-  ArrowUpCircle,
-  History,
-  ShieldCheck,
-  Activity,
-  ArrowRightLeft,
-  Search,
-  Eye,
-  CheckCircle2,
-  ScanBarcode,
-  Cpu,
-  HardDrive,
-  XCircle,
-  Crosshair
+  Warehouse, Lock, Loader2, Package, LayoutDashboard, Wallet, TrendingUp,
+  TrendingDown, AlertTriangle, PlusCircle, MinusCircle, ArrowDownCircle,
+  ArrowUpCircle, ShieldCheck, Activity, ArrowRightLeft, Search, Eye, CheckCircle2,
+  ScanBarcode, HardDrive, XCircle, Crosshair, HelpCircle, List
 } from "lucide-react";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
@@ -197,7 +176,7 @@ function GodamDashboardShell({ onLock }: { onLock: () => void }) {
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-6 lg:p-8 custom-scrollbar">
+      <div className="flex-1 overflow-y-auto p-6 lg:p-8 custom-scrollbar relative">
         {tab === "dashboard" && <GodamDashboardTab />}
         {tab === "stock" && <GodamStockTab />}
         {tab === "cash" && <GodamCashTab />}
@@ -281,7 +260,6 @@ function GodamDashboardTab() {
 // ============================================================
 function GodamStockTab() {
   const [balances, setBalances] = useState<any[]>([]);
-  const [entries, setEntries] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   
@@ -294,7 +272,10 @@ function GodamStockTab() {
   const [trackResult, setTrackResult] = useState<any>(null);
   const [trackLoading, setTrackLoading] = useState(false);
 
-  // Form includes hardware specs and serials array
+  // View Serials Modal State
+  const [viewSerialsData, setViewSerialsData] = useState<any>(null); // { productName: string, serials: [] }
+  const [loadingSerials, setLoadingSerials] = useState(false);
+
   const [form, setForm] = useState<{
     productName: string, type: "IN"|"OUT"|"TRANSFER", quantity: string, unitCost: string, 
     reason: string, note: string, brand: string, hardwareType: string, capacity: string, serials: string[]
@@ -308,9 +289,8 @@ function GodamStockTab() {
   const loadAll = async () => {
     try {
       setLoading(true);
-      const [balRes, entRes] = await Promise.all([ godamFetch("/stock"), godamFetch("/stock/entries") ]);
+      const balRes = await godamFetch("/stock");
       setBalances(balRes.ok ? await balRes.json() : []);
-      setEntries(entRes.ok ? await entRes.json() : []);
     } finally {
       setLoading(false);
     }
@@ -332,11 +312,11 @@ function GodamStockTab() {
         setForm(prev => ({ 
           ...prev, 
           serials: newSerials, 
-          quantity: newSerials.length.toString() // Auto Increment Quantity 🔥
+          quantity: newSerials.length.toString()
         }));
         setSuccess(`Scanned successfully: ${sn}`);
       }
-      setScanInput(""); // Clear gun for next scan
+      setScanInput("");
     }
   };
 
@@ -359,6 +339,21 @@ function GodamStockTab() {
       setTrackResult({ success: false, message: err.message });
     } finally {
       setTrackLoading(false);
+    }
+  };
+
+  const fetchActiveSerials = async (productId: string, productName: string) => {
+    setLoadingSerials(true);
+    setViewSerialsData({ productName, serials: [] });
+    try {
+      const res = await godamFetch(`/stock/serials/${productId}`);
+      if(res.ok) {
+        setViewSerialsData({ productName, serials: await res.json() });
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setLoadingSerials(false);
     }
   };
 
@@ -430,6 +425,13 @@ function GodamStockTab() {
               </button>
             </div>
 
+            {form.type !== "IN" && (
+               <div className="bg-blue-50 text-blue-800 p-3 rounded-md text-xs font-medium border border-blue-200 flex items-start gap-2">
+                  <HelpCircle className="h-4 w-4 shrink-0 mt-0.5" />
+                  Accounting Note: Stock Out/Transfer uses the Moving Average cost principle. Per unit average cost will not change, only total inventory valuation decreases.
+               </div>
+            )}
+
             <div className="space-y-2">
               <Label className="font-semibold text-slate-700">Item Model / Name <span className="text-rose-500">*</span></Label>
               <Input list="godam-products" autoComplete="off" placeholder="e.g. 980 Pro NVMe SSD" className="h-11 font-medium focus-visible:ring-indigo-500 focus-visible:border-indigo-500 border-slate-300"
@@ -439,7 +441,6 @@ function GodamStockTab() {
               </datalist>
             </div>
 
-            {/* Hardware Specific Details */}
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-2">
                 <Label className="font-semibold text-slate-700 text-xs">Brand</Label>
@@ -496,7 +497,7 @@ function GodamStockTab() {
                 <Input type="number" min="1" className="h-11 font-bold text-lg border-slate-300" 
                   value={form.quantity} 
                   onChange={(e) => setForm({ ...form, quantity: e.target.value })} 
-                  disabled={form.serials.length > 0} // Lock if scanning
+                  disabled={form.serials.length > 0} 
                 />
               </div>
               <div className="space-y-2">
@@ -589,34 +590,38 @@ function GodamStockTab() {
                   <TableHead className="text-right font-bold text-slate-700">Physical Stock</TableHead>
                   <TableHead className="text-right font-bold text-slate-700">Avg Cost</TableHead>
                   <TableHead className="text-right font-bold text-slate-700">Total Value</TableHead>
-                  <TableHead className="text-center font-bold text-slate-700">Health</TableHead>
+                  <TableHead className="text-center font-bold text-slate-700">Serials</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {loading ? (
                   <TableRow><TableCell colSpan={5} className="h-32 text-center"><Loader2 className="h-6 w-6 animate-spin mx-auto text-indigo-500" /></TableCell></TableRow>
                 ) : filteredBalances.length === 0 ? (
-                  <TableRow><TableCell colSpan={5} className="h-32 text-center text-slate-500 font-medium">No inventory records found. Start scanning items to populate.</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={5} className="h-32 text-center text-slate-500 font-medium">No inventory records found.</TableCell></TableRow>
                 ) : (
                   filteredBalances.map((b) => (
-                    <TableRow key={b.id} className="hover:bg-slate-50/50">
-                      <TableCell className="font-bold text-slate-800">
-                         {b.productName}
-                         {b.hardwareType && <div className="text-[10px] text-slate-500 font-medium">{b.brand} | {b.hardwareType} | {b.capacity}</div>}
+                    <TableRow key={b.id} className="hover:bg-slate-50/50 transition-colors">
+                      <TableCell>
+                         <p className="font-bold text-slate-800">{b.productName}</p>
+                         <div className="flex items-center gap-2 mt-1">
+                           {b.brand && <Badge variant="outline" className="text-[10px] bg-slate-100 text-slate-600">{b.brand}</Badge>}
+                           {b.hardwareType && <Badge variant="outline" className="text-[10px] bg-slate-100 text-slate-600">{b.hardwareType}</Badge>}
+                           {b.capacity && <Badge variant="outline" className="text-[10px] bg-indigo-50 text-indigo-700 border-indigo-200">{b.capacity}</Badge>}
+                         </div>
                       </TableCell>
-                      <TableCell className="text-right font-bold text-lg">{b.quantity}</TableCell>
+                      <TableCell className="text-right font-bold text-lg">
+                         <span className={b.quantity <= 0 ? "text-rose-600" : b.quantity <= 5 ? "text-amber-600" : "text-emerald-600"}>
+                            {b.quantity}
+                         </span>
+                      </TableCell>
                       <TableCell className="text-right font-medium text-slate-600">Rs. {Number(b.avgCost).toLocaleString()}</TableCell>
                       <TableCell className="text-right font-black text-indigo-600">
                         Rs. {(Number(b.quantity) * Number(b.avgCost)).toLocaleString()}
                       </TableCell>
                       <TableCell className="text-center">
-                        {b.quantity <= 0 ? (
-                          <Badge className="bg-rose-100 text-rose-800 border-rose-200 shadow-sm">Critical</Badge>
-                        ) : b.quantity <= 5 ? (
-                          <Badge className="bg-amber-100 text-amber-800 border-amber-200 shadow-sm">Low</Badge>
-                        ) : (
-                          <Badge className="bg-emerald-100 text-emerald-800 border-emerald-200 shadow-sm">Optimal</Badge>
-                        )}
+                        <Button variant="ghost" size="sm" className="text-indigo-600 hover:bg-indigo-50 hover:text-indigo-700 font-semibold text-xs" onClick={() => fetchActiveSerials(b.productId, b.productName)}>
+                           <List className="h-4 w-4 mr-1"/> View
+                        </Button>
                       </TableCell>
                     </TableRow>
                   ))
@@ -626,6 +631,48 @@ function GodamStockTab() {
           </CardContent>
         </Card>
       </div>
+
+      {/* VIP CUSTOM MODAL FOR VIEWING SERIALS (NO EXTRA IMPORTS NEEDED) */}
+      {viewSerialsData && (
+         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+            <Card className="w-full max-w-lg shadow-2xl overflow-hidden border-slate-200 animate-in zoom-in-95 duration-200">
+               <CardHeader className="bg-slate-800 text-white flex flex-row items-center justify-between py-4">
+                  <div>
+                     <CardTitle className="text-lg">Active Hardware Serials</CardTitle>
+                     <CardDescription className="text-slate-300 text-xs">{viewSerialsData.productName}</CardDescription>
+                  </div>
+                  <Button variant="ghost" className="text-slate-300 hover:text-white hover:bg-slate-700 rounded-full h-8 w-8 p-0" onClick={() => setViewSerialsData(null)}>
+                     <XCircle className="h-6 w-6"/>
+                  </Button>
+               </CardHeader>
+               <CardContent className="p-0">
+                  {loadingSerials ? (
+                     <div className="h-40 flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-indigo-500"/></div>
+                  ) : viewSerialsData.serials.length === 0 ? (
+                     <div className="h-40 flex flex-col items-center justify-center text-slate-500 p-6 text-center">
+                        <HardDrive className="h-10 w-10 mb-2 opacity-20"/>
+                        <p className="font-semibold">No serials found</p>
+                        <p className="text-xs">Either this product is fully sold or serials were not tracked during entry.</p>
+                     </div>
+                  ) : (
+                     <div className="max-h-[400px] overflow-y-auto p-4 custom-scrollbar">
+                        <div className="grid grid-cols-2 gap-2">
+                           {viewSerialsData.serials.map((s: any, idx: number) => (
+                              <div key={idx} className="flex items-center justify-between p-2 border border-slate-200 rounded bg-slate-50 hover:border-indigo-300 hover:bg-indigo-50 transition-colors">
+                                 <span className="font-mono text-sm font-bold text-slate-700">{s.serialNumber}</span>
+                              </div>
+                           ))}
+                        </div>
+                     </div>
+                  )}
+               </CardContent>
+               <div className="p-4 bg-slate-50 border-t border-slate-200 text-right">
+                  <Button onClick={() => setViewSerialsData(null)} className="bg-slate-800 hover:bg-slate-700">Close Window</Button>
+               </div>
+            </Card>
+         </div>
+      )}
+
     </div>
   );
 }
