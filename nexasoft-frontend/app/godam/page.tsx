@@ -27,18 +27,26 @@ import {
   ArrowRightLeft,
   Search,
   Eye,
-  CheckCircle2
+  CheckCircle2,
+  ScanBarcode,
+  Cpu,
+  HardDrive,
+  XCircle,
+  Crosshair
 } from "lucide-react";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
 const GODAM_TOKEN_KEY = "godam_access_token";
 
 const CASH_CATEGORIES = ["rent", "labour", "transport", "utility", "stock_purchase", "dispatch_sale", "misc"];
+const HARDWARE_BRANDS = ["Samsung", "Seagate", "Western Digital", "Kingston", "Crucial", "Corsair", "Adata", "Lexar", "Other"];
+const HARDWARE_TYPES = ["SSD", "NVMe M.2", "HDD", "RAM", "Processor", "Motherboard", "Power Supply", "Other"];
+const HARDWARE_CAPACITIES = ["128GB", "256GB", "500GB", "512GB", "1TB", "2TB", "4TB", "8GB", "16GB", "32GB", "N/A"];
 
 type Tab = "dashboard" | "stock" | "cash" | "reports" | "audit";
 
 // ============================================================
-// Root component — password gate ke peeche poora Godam module
+// Root component
 // ============================================================
 export default function GodamPage() {
   const [unlocked, setUnlocked] = useState(false);
@@ -140,14 +148,14 @@ function GodamLockScreen({ onUnlock }: { onUnlock: () => void }) {
 }
 
 // ============================================================
-// Shell — Fixed Sticky Layout to prevent scroll bugs
+// Shell — Fixed Sticky Layout
 // ============================================================
 function GodamDashboardShell({ onLock }: { onLock: () => void }) {
   const [tab, setTab] = useState<Tab>("dashboard");
 
   const tabs: { id: Tab; label: string; icon: any }[] = [
     { id: "dashboard", label: "Overview", icon: LayoutDashboard },
-    { id: "stock", label: "Inventory Manager", icon: Package },
+    { id: "stock", label: "Inventory & Scanning", icon: ScanBarcode },
     { id: "cash", label: "Financial Ledger", icon: Wallet },
     { id: "reports", label: "Profit & Loss", icon: TrendingUp },
     { id: "audit", label: "Audit Logs", icon: Activity },
@@ -155,18 +163,16 @@ function GodamDashboardShell({ onLock }: { onLock: () => void }) {
 
   return (
     <div className="flex h-screen w-full flex-col bg-slate-50 relative overflow-hidden">
-      
-      {/* 🔴 BUG FIX: STICKY HEADER - Yeh hissa kabhi scroll nahi hoga */}
       <div className="z-40 bg-white shadow-sm border-b border-slate-200 shrink-0">
         <div className="px-6 lg:px-8 pt-6 pb-2">
           <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
             <div>
               <h1 className="text-3xl font-extrabold text-slate-900 flex items-center gap-3">
                 <Warehouse className="h-8 w-8 text-indigo-600" />
-                Central Godam System
-                <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200 ml-2 shadow-sm">VIP Access</Badge>
+                Hardware Godam Portal
+                <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200 ml-2 shadow-sm">Secured</Badge>
               </h1>
-              <p className="text-sm text-slate-500 mt-1 font-medium">Advanced isolated asset management and valuation.</p>
+              <p className="text-sm text-slate-500 mt-1 font-medium">Advanced IT Assets Tracking & Barcode Management.</p>
             </div>
             <Button variant="outline" className="border-rose-200 text-rose-600 hover:bg-rose-50 hover:text-rose-700 shadow-sm" onClick={onLock}>
               <Lock className="h-4 w-4 mr-2" /> Secure Lock
@@ -191,7 +197,6 @@ function GodamDashboardShell({ onLock }: { onLock: () => void }) {
         </div>
       </div>
 
-      {/* 🔴 BUG FIX: SCROLLABLE CONTENT - Sirf neechay wala hissa scroll hoga */}
       <div className="flex-1 overflow-y-auto p-6 lg:p-8 custom-scrollbar">
         {tab === "dashboard" && <GodamDashboardTab />}
         {tab === "stock" && <GodamStockTab />}
@@ -203,9 +208,6 @@ function GodamDashboardShell({ onLock }: { onLock: () => void }) {
   );
 }
 
-// ============================================================
-// Shared fetch helper
-// ============================================================
 async function godamFetch(path: string, options: RequestInit = {}) {
   const token = sessionStorage.getItem(GODAM_TOKEN_KEY);
   const res = await fetch(`${API_URL}/godam${path}`, {
@@ -235,17 +237,13 @@ function GodamDashboardTab() {
       try {
         const res = await godamFetch("/dashboard");
         if (res.ok) setData(await res.json());
-      } catch (e) {
-        console.error(e);
       } finally {
         setLoading(false);
       }
     })();
   }, []);
 
-  if (loading) {
-    return <div className="flex justify-center items-center h-64"><Loader2 className="h-8 w-8 animate-spin text-indigo-500" /></div>;
-  }
+  if (loading) return <div className="flex justify-center items-center h-64"><Loader2 className="h-8 w-8 animate-spin text-indigo-500" /></div>;
 
   const cards = [
     { label: "Total Asset Valuation", value: `Rs. ${Number(data?.totalStockValue || 0).toLocaleString()}`, icon: Package, color: "indigo", desc: "Live market value of inventory" },
@@ -274,37 +272,12 @@ function GodamDashboardTab() {
           </Card>
         ))}
       </div>
-      
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <Card className="border-slate-200 shadow-sm">
-          <CardHeader>
-            <CardTitle className="text-lg flex items-center gap-2"><Activity className="h-5 w-5 text-indigo-500"/> System Health & Activity</CardTitle>
-            <CardDescription>Real-time godam infrastructure metrics</CardDescription>
-          </CardHeader>
-          <CardContent>
-             <div className="space-y-4">
-                <div className="flex items-center justify-between p-3.5 bg-slate-50 hover:bg-slate-100 transition-colors rounded-lg border border-slate-100">
-                  <span className="text-sm font-medium text-slate-700">Storage Optimization</span>
-                  <Badge variant="outline" className="bg-indigo-50 text-indigo-700 border-indigo-200">Optimal (100%)</Badge>
-                </div>
-                <div className="flex items-center justify-between p-3.5 bg-slate-50 hover:bg-slate-100 transition-colors rounded-lg border border-slate-100">
-                  <span className="text-sm font-medium text-slate-700">Last System Audit</span>
-                  <span className="text-sm font-bold text-slate-900">Just Now</span>
-                </div>
-                <div className="flex items-center justify-between p-3.5 bg-slate-50 hover:bg-slate-100 transition-colors rounded-lg border border-slate-100">
-                  <span className="text-sm font-medium text-slate-700">Isolation Security Status</span>
-                  <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200 flex gap-1 items-center"><ShieldCheck className="w-3 h-3"/> Secured</Badge>
-                </div>
-             </div>
-          </CardContent>
-        </Card>
-      </div>
     </div>
   );
 }
 
 // ============================================================
-// Stock In/Out/Transfer tab - FIX: Manual Product Entry
+// Stock In/Out/Transfer tab WITH RAPID SCANNER 🔥
 // ============================================================
 function GodamStockTab() {
   const [balances, setBalances] = useState<any[]>([]);
@@ -312,24 +285,32 @@ function GodamStockTab() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   
-  // Feedback states
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
 
-  const [form, setForm] = useState({ productName: "", type: "IN", quantity: "", unitCost: "", reason: "", note: "" });
+  // Track Single Serial Number Engine
+  const [trackSN, setTrackSN] = useState("");
+  const [trackResult, setTrackResult] = useState<any>(null);
+  const [trackLoading, setTrackLoading] = useState(false);
+
+  // Form includes hardware specs and serials array
+  const [form, setForm] = useState<{
+    productName: string, type: "IN"|"OUT"|"TRANSFER", quantity: string, unitCost: string, 
+    reason: string, note: string, brand: string, hardwareType: string, capacity: string, serials: string[]
+  }>({ 
+    productName: "", type: "IN", quantity: "0", unitCost: "", reason: "", note: "",
+    brand: "", hardwareType: "", capacity: "", serials: [] 
+  });
+
+  const [scanInput, setScanInput] = useState("");
 
   const loadAll = async () => {
     try {
       setLoading(true);
-      const [balRes, entRes] = await Promise.all([
-        godamFetch("/stock"),
-        godamFetch("/stock/entries")
-      ]);
+      const [balRes, entRes] = await Promise.all([ godamFetch("/stock"), godamFetch("/stock/entries") ]);
       setBalances(balRes.ok ? await balRes.json() : []);
       setEntries(entRes.ok ? await entRes.json() : []);
-    } catch (e) {
-      console.error("Stock load error:", e);
     } finally {
       setLoading(false);
     }
@@ -337,42 +318,80 @@ function GodamStockTab() {
 
   useEffect(() => { loadAll(); }, []);
 
+  // 🔥 Rapid Barcode Scan Logic
+  const handleBarcodeScan = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter' && scanInput.trim() !== '') {
+      e.preventDefault();
+      const sn = scanInput.trim();
+      
+      if (form.serials.includes(sn)) {
+        setError(`Duplicate Scan: Serial ${sn} is already in the list!`);
+      } else {
+        setError("");
+        const newSerials = [...form.serials, sn];
+        setForm(prev => ({ 
+          ...prev, 
+          serials: newSerials, 
+          quantity: newSerials.length.toString() // Auto Increment Quantity 🔥
+        }));
+        setSuccess(`Scanned successfully: ${sn}`);
+      }
+      setScanInput(""); // Clear gun for next scan
+    }
+  };
+
+  const removeSerial = (snToRemove: string) => {
+    const updatedSerials = form.serials.filter(sn => sn !== snToRemove);
+    setForm(prev => ({ ...prev, serials: updatedSerials, quantity: updatedSerials.length.toString() }));
+  };
+
+  const handleTrackSerial = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!trackSN.trim()) return;
+    setTrackLoading(true);
+    setTrackResult(null);
+    try {
+      const res = await godamFetch(`/track-serial/${trackSN.trim()}`);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || "Serial number not found in registry.");
+      setTrackResult({ success: true, data });
+    } catch (err: any) {
+      setTrackResult({ success: false, message: err.message });
+    } finally {
+      setTrackLoading(false);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError("");
-    setSuccess("");
+    setError(""); setSuccess("");
     
-    // 🔴 BUG FIX: Validation checking if name is empty
-    if (!form.productName.trim()) return setError("Please enter an Item Name manually or select from the list.");
+    if (!form.productName.trim()) return setError("Please enter an Item Name.");
     if (!form.quantity || Number(form.quantity) <= 0) return setError("Quantity must be greater than zero.");
-    if (form.type === "IN" && (!form.unitCost || Number(form.unitCost) < 0)) return setError("Valid Unit Cost is required for Stock IN.");
-
-    const apiType = form.type === "TRANSFER" ? "OUT" : form.type;
-    const finalReason = form.type === "TRANSFER" ? "TRANSFER_TO_SHOP" : form.reason;
+    if (form.type === "IN" && (!form.unitCost || Number(form.unitCost) < 0)) return setError("Unit Cost is required for Stock IN.");
+    
+    if (form.serials.length > 0 && form.serials.length !== Number(form.quantity)) {
+      return setError(`Mismatch! Quantity is ${form.quantity} but you scanned ${form.serials.length} serials.`);
+    }
 
     try {
       setSaving(true);
       const res = await godamFetch("/stock", {
         method: "POST",
         body: JSON.stringify({
-          productName: form.productName.trim(), // API isolated godam relies on this name
-          type: apiType,
+          ...form,
+          productName: form.productName.trim(),
           quantity: Number(form.quantity),
           unitCost: Number(form.unitCost) || 0,
-          reason: finalReason,
-          note: form.note || (form.type === "TRANSFER" ? "Moved stock to main shop inventory" : ""),
         }),
       });
       const result = await res.json();
       if (!res.ok) throw new Error(result.message || "Operation Failed");
 
       await loadAll();
-      setForm({ productName: "", type: "IN", quantity: "", unitCost: "", reason: "", note: "" });
-      
-      // Professional success feedback
-      setSuccess(`Success! ${form.quantity}x ${form.productName} processed successfully.`);
+      setForm({ productName: "", type: "IN", quantity: "0", unitCost: "", reason: "", note: "", brand: "", hardwareType: "", capacity: "", serials: [] });
+      setSuccess(`Success! Batch processed perfectly.`);
       setTimeout(() => setSuccess(""), 4000);
-
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -384,114 +403,177 @@ function GodamStockTab() {
 
   return (
     <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 animate-in fade-in duration-300">
+      
+      {/* LEFT PANEL: HARDWARE INVENTORY FORM */}
       <Card className="xl:col-span-1 h-fit shadow-md border-slate-200">
         <CardHeader className="bg-slate-50/80 border-b pb-4">
-          <CardTitle className="text-lg">Process Inventory</CardTitle>
-          <CardDescription>Add, remove or transfer stock independently</CardDescription>
+          <CardTitle className="text-lg flex items-center gap-2"><HardDrive className="h-5 w-5 text-indigo-600"/> Hardware Entry</CardTitle>
+          <CardDescription>Rapid Scan SSDs, NVMes, & Components</CardDescription>
         </CardHeader>
         <CardContent className="pt-6">
           <form onSubmit={handleSubmit} className="space-y-5">
-            
-            {/* Error Message */}
-            {error && (
-              <div className="flex items-center gap-2 rounded-lg bg-rose-50 border border-rose-200 px-4 py-3 text-sm font-medium text-rose-700">
-                <AlertTriangle className="h-4 w-4 shrink-0"/> {error}
-              </div>
-            )}
+            {error && <div className="flex items-center gap-2 rounded-lg bg-rose-50 border border-rose-200 px-4 py-3 text-sm font-medium text-rose-700"><AlertTriangle className="h-4 w-4 shrink-0"/> {error}</div>}
+            {success && <div className="flex items-center gap-2 rounded-lg bg-emerald-50 border border-emerald-200 px-4 py-3 text-sm font-medium text-emerald-700"><CheckCircle2 className="h-4 w-4 shrink-0"/> {success}</div>}
 
-            {/* Success Message */}
-            {success && (
-              <div className="flex items-center gap-2 rounded-lg bg-emerald-50 border border-emerald-200 px-4 py-3 text-sm font-medium text-emerald-700">
-                <CheckCircle2 className="h-4 w-4 shrink-0"/> {success}
-              </div>
-            )}
-
-            {/* Action Buttons */}
             <div className="flex gap-2 p-1 bg-slate-100 rounded-lg">
-              <button
-                type="button"
-                onClick={() => { setForm({ ...form, type: "IN" }); setError(""); setSuccess(""); }}
-                className={`flex-1 flex flex-col items-center justify-center gap-1 rounded-md px-2 py-3 text-xs font-bold transition-all ${
-                  form.type === "IN" ? "bg-white shadow-sm text-emerald-600 ring-1 ring-emerald-200" : "text-slate-500 hover:text-slate-700 hover:bg-slate-200/50"
-                }`}
-              >
+              <button type="button" onClick={() => { setForm({ ...form, type: "IN" }); setError(""); setSuccess(""); }}
+                className={`flex-1 flex flex-col items-center justify-center gap-1 rounded-md px-2 py-3 text-xs font-bold transition-all ${form.type === "IN" ? "bg-white shadow-sm text-emerald-600 ring-1 ring-emerald-200" : "text-slate-500 hover:text-slate-700 hover:bg-slate-200/50"}`}>
                 <ArrowDownCircle className="h-5 w-5 mb-1" /> STOCK IN
               </button>
-              <button
-                type="button"
-                onClick={() => { setForm({ ...form, type: "OUT" }); setError(""); setSuccess(""); }}
-                className={`flex-1 flex flex-col items-center justify-center gap-1 rounded-md px-2 py-3 text-xs font-bold transition-all ${
-                  form.type === "OUT" ? "bg-white shadow-sm text-rose-600 ring-1 ring-rose-200" : "text-slate-500 hover:text-slate-700 hover:bg-slate-200/50"
-                }`}
-              >
+              <button type="button" onClick={() => { setForm({ ...form, type: "OUT" }); setError(""); setSuccess(""); }}
+                className={`flex-1 flex flex-col items-center justify-center gap-1 rounded-md px-2 py-3 text-xs font-bold transition-all ${form.type === "OUT" ? "bg-white shadow-sm text-rose-600 ring-1 ring-rose-200" : "text-slate-500 hover:text-slate-700 hover:bg-slate-200/50"}`}>
                 <ArrowUpCircle className="h-5 w-5 mb-1" /> STOCK OUT
               </button>
-              <button
-                type="button"
-                onClick={() => { setForm({ ...form, type: "TRANSFER" }); setError(""); setSuccess(""); }}
-                className={`flex-1 flex flex-col items-center justify-center gap-1 rounded-md px-2 py-3 text-xs font-bold transition-all ${
-                  form.type === "TRANSFER" ? "bg-white shadow-sm text-indigo-600 ring-1 ring-indigo-200" : "text-slate-500 hover:text-slate-700 hover:bg-slate-200/50"
-                }`}
-              >
+              <button type="button" onClick={() => { setForm({ ...form, type: "TRANSFER" }); setError(""); setSuccess(""); }}
+                className={`flex-1 flex flex-col items-center justify-center gap-1 rounded-md px-2 py-3 text-xs font-bold transition-all ${form.type === "TRANSFER" ? "bg-white shadow-sm text-indigo-600 ring-1 ring-indigo-200" : "text-slate-500 hover:text-slate-700 hover:bg-slate-200/50"}`}>
                 <ArrowRightLeft className="h-5 w-5 mb-1" /> TRANSFER
               </button>
             </div>
 
-            {/* 🔴 BUG FIX: Smart Textbox Input instead of empty Dropdown */}
-            <div className="space-y-2 relative">
-              <Label className="font-semibold text-slate-700">Item Name <span className="text-rose-500">*</span></Label>
-              <Input 
-                list="godam-existing-products" 
-                autoComplete="off"
-                placeholder="Type new item or select existing..."
-                className="h-11 font-medium focus-visible:ring-indigo-500 focus-visible:border-indigo-500 border-slate-300"
-                value={form.productName} 
-                onChange={(e) => setForm({ ...form, productName: e.target.value })} 
-              />
-              <datalist id="godam-existing-products">
-                {balances.map(b => (
-                  <option key={b.id} value={b.productName} />
-                ))}
+            <div className="space-y-2">
+              <Label className="font-semibold text-slate-700">Item Model / Name <span className="text-rose-500">*</span></Label>
+              <Input list="godam-products" autoComplete="off" placeholder="e.g. 980 Pro NVMe SSD" className="h-11 font-medium focus-visible:ring-indigo-500 focus-visible:border-indigo-500 border-slate-300"
+                value={form.productName} onChange={(e) => setForm({ ...form, productName: e.target.value })} />
+              <datalist id="godam-products">
+                {balances.map(b => <option key={b.id} value={b.productName} />)}
               </datalist>
-              <p className="text-[10px] text-slate-500 mt-1">Free text allowed. System will automatically register new items.</p>
+            </div>
+
+            {/* Hardware Specific Details */}
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label className="font-semibold text-slate-700 text-xs">Brand</Label>
+                <select className="flex h-10 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500" value={form.brand} onChange={(e) => setForm({ ...form, brand: e.target.value })}>
+                  <option value="">Select...</option>
+                  {HARDWARE_BRANDS.map(b => <option key={b} value={b}>{b}</option>)}
+                </select>
+              </div>
+              <div className="space-y-2">
+                <Label className="font-semibold text-slate-700 text-xs">Type</Label>
+                <select className="flex h-10 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500" value={form.hardwareType} onChange={(e) => setForm({ ...form, hardwareType: e.target.value })}>
+                  <option value="">Select...</option>
+                  {HARDWARE_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                </select>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label className="font-semibold text-slate-700 text-xs">Capacity (if applicable)</Label>
+              <select className="flex h-10 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500" value={form.capacity} onChange={(e) => setForm({ ...form, capacity: e.target.value })}>
+                <option value="">Select...</option>
+                {HARDWARE_CAPACITIES.map(c => <option key={c} value={c}>{c}</option>)}
+              </select>
+            </div>
+
+            {/* 🔥 RAPID BARCODE SCANNER 🔥 */}
+            <div className="p-4 bg-indigo-50/50 border border-indigo-100 rounded-lg space-y-3">
+               <Label className="font-bold text-indigo-900 flex items-center gap-2"><ScanBarcode className="h-4 w-4"/> Rapid Barcode Scanning</Label>
+               <Input 
+                 placeholder="Scan Barcode here... (Auto saves)" 
+                 className="h-12 border-indigo-300 focus-visible:ring-indigo-500 bg-white text-lg tracking-widest font-mono shadow-inner"
+                 value={scanInput}
+                 onChange={(e) => setScanInput(e.target.value)}
+                 onKeyDown={handleBarcodeScan}
+               />
+               
+               {form.serials.length > 0 && (
+                 <div className="mt-2">
+                   <p className="text-xs font-bold text-slate-500 mb-2">Scanned Items ({form.serials.length}):</p>
+                   <div className="flex flex-wrap gap-2 max-h-[120px] overflow-y-auto custom-scrollbar p-1">
+                     {form.serials.map((sn, i) => (
+                       <Badge key={i} variant="secondary" className="bg-white border-slate-300 flex items-center gap-1 font-mono text-xs">
+                         {sn} <XCircle className="h-3 w-3 text-rose-500 cursor-pointer hover:text-rose-700" onClick={() => removeSerial(sn)}/>
+                       </Badge>
+                     ))}
+                   </div>
+                 </div>
+               )}
             </div>
 
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label className="font-semibold text-slate-700">Quantity <span className="text-rose-500">*</span></Label>
-                <Input type="number" min="1" className="h-11 font-bold text-lg border-slate-300 focus-visible:ring-indigo-500" value={form.quantity} onChange={(e) => setForm({ ...form, quantity: e.target.value })} />
+                <Label className="font-semibold text-slate-700">Total Qty <span className="text-rose-500">*</span></Label>
+                <Input type="number" min="1" className="h-11 font-bold text-lg border-slate-300" 
+                  value={form.quantity} 
+                  onChange={(e) => setForm({ ...form, quantity: e.target.value })} 
+                  disabled={form.serials.length > 0} // Lock if scanning
+                />
               </div>
               <div className="space-y-2">
-                <Label className="font-semibold text-slate-700">Cost (Rs) {form.type !== "IN" && <span className="text-[10px] text-slate-400 font-normal uppercase ml-1">Auto</span>}</Label>
-                <Input type="number" min="0" className="h-11 font-bold text-lg border-slate-300 focus-visible:ring-indigo-500" disabled={form.type !== "IN"} value={form.unitCost} onChange={(e) => setForm({ ...form, unitCost: e.target.value })} placeholder={form.type !== "IN" ? "Auto Evaluated" : "e.g. 1500"} />
+                <Label className="font-semibold text-slate-700">Cost (Rs)</Label>
+                <Input type="number" min="0" className="h-11 font-bold text-lg border-slate-300" disabled={form.type !== "IN"} value={form.unitCost} onChange={(e) => setForm({ ...form, unitCost: e.target.value })} placeholder="Auto" />
               </div>
-            </div>
-
-            {form.type !== "TRANSFER" && (
-               <div className="space-y-2">
-                 <Label className="font-semibold text-slate-700">Reason / Reference</Label>
-                 <Input className="h-11 border-slate-300 focus-visible:ring-indigo-500" placeholder="e.g. Supplier Batch #102, Damaged" value={form.reason} onChange={(e) => setForm({ ...form, reason: e.target.value })} />
-               </div>
-            )}
-
-            <div className="space-y-2">
-              <Label className="font-semibold text-slate-700">Additional Notes</Label>
-              <Input className="h-11 border-slate-300 focus-visible:ring-indigo-500" placeholder="Optional details..." value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} />
             </div>
 
             <Button type="submit" className={`w-full h-12 text-base font-bold shadow-lg transition-colors ${form.type === "IN" ? "bg-emerald-600 hover:bg-emerald-700" : form.type === "TRANSFER" ? "bg-indigo-600 hover:bg-indigo-700" : "bg-rose-600 hover:bg-rose-700"}`} disabled={saving}>
               {saving ? <Loader2 className="h-5 w-5 animate-spin mr-2" /> : form.type === "IN" ? <PlusCircle className="h-5 w-5 mr-2" /> : form.type === "TRANSFER" ? <ArrowRightLeft className="h-5 w-5 mr-2" /> : <MinusCircle className="h-5 w-5 mr-2" />}
-              {form.type === "IN" ? "Add to Godam" : form.type === "TRANSFER" ? "Dispatch to Main Shop" : "Remove from Godam"}
+              {form.type === "IN" ? "Add to Godam" : form.type === "TRANSFER" ? "Transfer to Main Shop" : "Remove from Godam"}
             </Button>
           </form>
         </CardContent>
       </Card>
 
+      {/* RIGHT PANEL: LIVE TRACKING & BALANCES */}
       <div className="xl:col-span-2 space-y-6">
+        
+        {/* 🔥 LIVE SERIAL TRACKER SEARCH ENGINE 🔥 */}
+        <Card className="shadow-md border-indigo-200 bg-indigo-50/20">
+           <CardContent className="p-6">
+              <form onSubmit={handleTrackSerial} className="flex flex-col sm:flex-row gap-4 items-end">
+                 <div className="space-y-2 flex-1 w-full">
+                    <Label className="font-bold text-indigo-900 flex items-center gap-2"><Crosshair className="h-5 w-5"/> Target Serial Tracker</Label>
+                    <Input 
+                      placeholder="Scan or enter SSD/Hardware Serial Number to locate..." 
+                      className="h-12 border-indigo-300 bg-white focus-visible:ring-indigo-500 font-mono text-lg"
+                      value={trackSN}
+                      onChange={(e) => setTrackSN(e.target.value)}
+                    />
+                 </div>
+                 <Button type="submit" className="h-12 bg-indigo-600 hover:bg-indigo-700 px-8 w-full sm:w-auto" disabled={trackLoading || !trackSN.trim()}>
+                    {trackLoading ? <Loader2 className="h-5 w-5 animate-spin" /> : <Search className="h-5 w-5 mr-2" />} Locate Asset
+                 </Button>
+              </form>
+
+              {/* Display Tracking Result */}
+              {trackResult && (
+                 <div className="mt-4 pt-4 border-t border-indigo-100">
+                    {trackResult.success ? (
+                       <div className="flex flex-col sm:flex-row justify-between items-center gap-4 bg-white p-4 rounded-lg border border-emerald-200 shadow-sm">
+                          <div>
+                             <p className="text-xs text-slate-500 uppercase font-bold">Asset Found</p>
+                             <p className="text-lg font-bold text-slate-800">{trackResult.data.productName}</p>
+                             <p className="text-sm font-mono text-indigo-600 mt-1">SN: {trackResult.data.serialNumber}</p>
+                          </div>
+                          <div className="text-right">
+                             <Badge className={`text-sm px-4 py-1 ${
+                                trackResult.data.status === 'IN_GODAM' ? 'bg-emerald-100 text-emerald-800 border-emerald-200' :
+                                trackResult.data.status === 'TRANSFERRED_TO_SHOP' ? 'bg-indigo-100 text-indigo-800 border-indigo-200' :
+                                'bg-rose-100 text-rose-800 border-rose-200'
+                             }`}>
+                                {trackResult.data.status.replace(/_/g, ' ')}
+                             </Badge>
+                             <p className="text-xs text-slate-400 mt-2">Registered: {new Date(trackResult.data.createdAt).toLocaleDateString()}</p>
+                          </div>
+                       </div>
+                    ) : (
+                       <div className="bg-rose-50 border border-rose-200 text-rose-700 p-4 rounded-lg flex items-center gap-3">
+                          <XCircle className="h-6 w-6"/>
+                          <div>
+                             <p className="font-bold">Asset Not Found</p>
+                             <p className="text-sm">{trackResult.message}</p>
+                          </div>
+                       </div>
+                    )}
+                 </div>
+              )}
+           </CardContent>
+        </Card>
+
+        {/* Existing Valuation Table */}
         <Card className="shadow-md border-slate-200">
           <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between bg-slate-50/80 border-b pb-4 gap-4">
              <div>
-                <CardTitle className="text-lg">Live Asset Valuation</CardTitle>
+                <CardTitle className="text-lg">Live Hardware Valuation</CardTitle>
                 <CardDescription>Current Godam Stock Metrics</CardDescription>
              </div>
              <div className="relative w-full sm:w-auto">
@@ -505,7 +587,7 @@ function GodamStockTab() {
                 <TableRow>
                   <TableHead className="font-bold text-slate-700 min-w-[200px]">Item Description</TableHead>
                   <TableHead className="text-right font-bold text-slate-700">Physical Stock</TableHead>
-                  <TableHead className="text-right font-bold text-slate-700">Avg Unit Cost</TableHead>
+                  <TableHead className="text-right font-bold text-slate-700">Avg Cost</TableHead>
                   <TableHead className="text-right font-bold text-slate-700">Total Value</TableHead>
                   <TableHead className="text-center font-bold text-slate-700">Health</TableHead>
                 </TableRow>
@@ -514,11 +596,14 @@ function GodamStockTab() {
                 {loading ? (
                   <TableRow><TableCell colSpan={5} className="h-32 text-center"><Loader2 className="h-6 w-6 animate-spin mx-auto text-indigo-500" /></TableCell></TableRow>
                 ) : filteredBalances.length === 0 ? (
-                  <TableRow><TableCell colSpan={5} className="h-32 text-center text-slate-500 font-medium">No inventory records found. Add items to start.</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={5} className="h-32 text-center text-slate-500 font-medium">No inventory records found. Start scanning items to populate.</TableCell></TableRow>
                 ) : (
                   filteredBalances.map((b) => (
                     <TableRow key={b.id} className="hover:bg-slate-50/50">
-                      <TableCell className="font-bold text-slate-800">{b.productName}</TableCell>
+                      <TableCell className="font-bold text-slate-800">
+                         {b.productName}
+                         {b.hardwareType && <div className="text-[10px] text-slate-500 font-medium">{b.brand} | {b.hardwareType} | {b.capacity}</div>}
+                      </TableCell>
                       <TableCell className="text-right font-bold text-lg">{b.quantity}</TableCell>
                       <TableCell className="text-right font-medium text-slate-600">Rs. {Number(b.avgCost).toLocaleString()}</TableCell>
                       <TableCell className="text-right font-black text-indigo-600">
@@ -526,56 +611,15 @@ function GodamStockTab() {
                       </TableCell>
                       <TableCell className="text-center">
                         {b.quantity <= 0 ? (
-                          <Badge className="bg-rose-100 text-rose-800 border-rose-200 shadow-sm">Critical: Empty</Badge>
+                          <Badge className="bg-rose-100 text-rose-800 border-rose-200 shadow-sm">Critical</Badge>
                         ) : b.quantity <= 5 ? (
-                          <Badge className="bg-amber-100 text-amber-800 border-amber-200 shadow-sm">Warning: Low</Badge>
+                          <Badge className="bg-amber-100 text-amber-800 border-amber-200 shadow-sm">Low</Badge>
                         ) : (
                           <Badge className="bg-emerald-100 text-emerald-800 border-emerald-200 shadow-sm">Optimal</Badge>
                         )}
                       </TableCell>
                     </TableRow>
                   ))
-                )}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
-
-        <Card className="shadow-md border-slate-200">
-          <CardHeader className="bg-slate-50/80 border-b pb-4"><CardTitle className="text-lg flex items-center gap-2"><History className="h-5 w-5" /> Recent Stock Movements</CardTitle></CardHeader>
-          <CardContent className="p-0 overflow-x-auto">
-            <Table>
-              <TableHeader className="bg-slate-100">
-                <TableRow>
-                  <TableHead>Timestamp</TableHead>
-                  <TableHead>Product</TableHead>
-                  <TableHead>Operation</TableHead>
-                  <TableHead className="text-right">Volume</TableHead>
-                  <TableHead className="text-right">Value Impact</TableHead>
-                  <TableHead>Remarks</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {entries.slice(0, 15).map((e) => (
-                  <TableRow key={e.id} className="hover:bg-slate-50/50">
-                    <TableCell className="text-xs font-medium text-slate-500 whitespace-nowrap">{new Date(e.createdAt).toLocaleString()}</TableCell>
-                    <TableCell className="font-semibold text-slate-700">{e.productName}</TableCell>
-                    <TableCell>
-                      {e.reason === "TRANSFER_TO_SHOP" ? (
-                         <Badge className="bg-indigo-100 text-indigo-800 border-indigo-200 shadow-sm"><ArrowRightLeft className="h-3 w-3 mr-1 inline"/> SHOP TRANSFER</Badge>
-                      ) : (
-                         <Badge className={`shadow-sm ${e.type === "IN" ? "bg-emerald-100 text-emerald-800 border-emerald-200" : "bg-rose-100 text-rose-800 border-rose-200"}`}>
-                           {e.type === "IN" ? "STOCK IN" : "STOCK OUT"}
-                         </Badge>
-                      )}
-                    </TableCell>
-                    <TableCell className="text-right font-bold">{e.quantity}</TableCell>
-                    <TableCell className="text-right font-semibold text-slate-600">Rs. {Number(e.totalValue).toLocaleString()}</TableCell>
-                    <TableCell className="text-xs text-slate-500 max-w-[200px] truncate" title={e.note}>{e.note || e.reason || "-"}</TableCell>
-                  </TableRow>
-                ))}
-                {entries.length === 0 && !loading && (
-                  <TableRow><TableCell colSpan={6} className="h-24 text-center text-slate-400 font-medium">No movement history available.</TableCell></TableRow>
                 )}
               </TableBody>
             </Table>
@@ -856,7 +900,7 @@ function GodamAuditTab() {
            <CardTitle className="text-lg flex items-center gap-2 text-rose-700">
               <ShieldCheck className="h-5 w-5" /> Strict Security Audit Trail
            </CardTitle>
-           <CardDescription>Immutable record of all Godam portal interactions and stock modifications.</CardDescription>
+           <CardDescription>Immutable record of all Godam portal interactions and hardware serial scans.</CardDescription>
          </CardHeader>
          <CardContent className="p-0 overflow-x-auto">
             <Table>
