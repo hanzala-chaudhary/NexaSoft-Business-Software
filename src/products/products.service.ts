@@ -6,18 +6,47 @@ import { Prisma } from '@prisma/client';
 export class ProductsService {
   constructor(private prisma: PrismaService) {}
 
+  // =======================================================
+  // 🔫 HARDWARE SERIAL SCANNER (FOR POS TERMINAL)
+  // =======================================================
   async scanSerialNumber(serial_number: string) {
     const item = await this.prisma.serialized_products.findFirst({
       where: { serial_number },
-      include: { products: true },
+      include: { 
+        products: { 
+          include: { category: true, brand: true } 
+        } 
+      },
     });
 
     if (!item) {
-      throw new NotFoundException('Yeh serial number hamare system mein majood nahi hai!');
+      throw new NotFoundException(`Serial number '${serial_number}' hamare system mein majood nahi hai!`);
     }
-    return item;
+
+    // 🔴 VIP FIX: POS Validation - Check if item is already sold or damaged
+    if (item.status === 'SOLD') {
+      throw new BadRequestException(`Serial '${serial_number}' pehle hi kisi customer ko sale ho chuka hai!`);
+    }
+    if (item.status === 'RETURNED' || item.status === 'DAMAGED') {
+      throw new BadRequestException(`Alert! Is hardware ka status '${item.status}' hai. Ise sale nahi kiya ja sakta.`);
+    }
+
+    // Return exact format required by our React POS Frontend
+    return {
+      serialId: item.id,
+      serialNumber: item.serial_number,
+      productId: item.products.id,
+      productName: item.products.name,
+      brand: item.products.brand?.name || 'Unknown',
+      category: item.products.category?.name || 'Unknown',
+      purchaseCost: Number(item.products.purchasePrice) || 0,
+      price: Number(item.products.salePrice) || 0
+    };
   }
 
+  // =======================================================
+  // 🔍 SMART SEARCH ENGINE (AUTO-COMPLETE)
+  // =======================================================
   async searchProducts(query: string) {
     const q = query.trim();
     if (!q) return this.getAllProducts();
@@ -41,7 +70,7 @@ export class ProductsService {
         sale: true,
         customer: true,
       },
-      take: 30,
+      take: 30, // Limit optimized for fast performance
     });
 
     const resultMap = new Map<string, any>();
@@ -67,6 +96,9 @@ export class ProductsService {
     return Array.from(resultMap.values());
   }
 
+  // =======================================================
+  // ➕ CREATE NEW PRODUCT CATALOG
+  // =======================================================
   async createProduct(data: any) {
     if (!data.name || !data.name.trim()) {
       throw new BadRequestException('Product ka naam zaroori hai!');
@@ -77,9 +109,9 @@ export class ProductsService {
     if (data.purchasePrice === undefined || data.purchasePrice === null || isNaN(Number(data.purchasePrice))) {
       throw new BadRequestException('Purchase price zaroori hai aur number honi chahiye!');
     }
+    
     const generatedSku = `PRD-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`;
-    const generatedSlug =
-      data.name.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-') + '-' + Date.now();
+    const generatedSlug = data.name.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-') + '-' + Date.now();
 
     try {
       return await this.prisma.product.create({
@@ -87,7 +119,7 @@ export class ProductsService {
           name: data.name.trim(),
           sku: generatedSku,
           slug: generatedSlug,
-          // Serialized product ho to master_barcode kabhi save nahi karte, chahe kuch bheja bhi ho
+          // Serialized product ho to master_barcode kabhi save nahi karte
           master_barcode: data.isSerialized ? null : data.masterBarcode?.trim() || null,
           purchasePrice: Number(data.purchasePrice) || 0,
           salePrice: Number(data.salePrice),
@@ -107,22 +139,30 @@ export class ProductsService {
     }
   }
 
+  // =======================================================
+  // 📦 GET ALL PRODUCTS
+  // =======================================================
   async getAllProducts() {
     return this.prisma.product.findMany({
-      where: { deleted_at: null },
-      orderBy: { createdAt: 'desc' },
+      where: { deleted_at: null }, // Sirf active items
+      orderBy: { created_at: 'desc' }, // 'createdAt' ko 'created_at' mein update kiya assuming snake_case
       include: { category: true, brand: true },
     });
   }
 
   async getProductById(id: string) {
-    const product = await this.prisma.product.findUnique({ where: { id } });
+    const product = await this.prisma.product.findFirst({ 
+      where: { id, deleted_at: null } 
+    });
     if (!product) {
-      throw new NotFoundException('Product nahi mila!');
+      throw new NotFoundException('Product nahi mila ya delete ho chuka hai!');
     }
     return product;
   }
 
+  // =======================================================
+  // 🔄 UPDATE PRODUCT
+  // =======================================================
   async updateProduct(id: string, data: any) {
     await this.getProductById(id);
 
@@ -149,22 +189,24 @@ export class ProductsService {
     }
   }
 
+  // =======================================================
+  // ❌ DELETE PRODUCT (ENTERPRISE SOFT DELETE)
+  // =======================================================
   async deleteProduct(id: string) {
     await this.getProductById(id);
 
     try {
-      await this.prisma.serialized_products.deleteMany({
-        where: { product_id: id },
-      });
-
-      return await this.prisma.product.delete({
+      // 🔴 VIP FIX: Hard delete (deleteMany) ki bajaye Soft Delete taake Invoice history zinda rahay
+      return await this.prisma.product.update({
         where: { id },
+        data: { 
+          deleted_at: new Date(),
+          is_active: false 
+        },
       });
     } catch (error) {
       console.error('Delete Error:', error);
-      throw new BadRequestException(
-        'Yeh product pehle kisi Sale/Purchase mein use ho chuka hai is liye delete nahi ho sakta!',
-      );
+      throw new BadRequestException('Product delete karte waqt error aaya!');
     }
   }
-} 
+}
