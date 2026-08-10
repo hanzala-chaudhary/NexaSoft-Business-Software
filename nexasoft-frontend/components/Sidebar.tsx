@@ -13,8 +13,6 @@ import {
   Building2,
   CreditCard,
   Receipt,
-  BarChart3,
-  Settings,
   ChevronLeft,
   ChevronRight,
   LogOut,
@@ -22,7 +20,6 @@ import {
   Zap,
   Lock,
   History,
-  Boxes,
   ShieldCheck
 } from "lucide-react";
 
@@ -70,7 +67,6 @@ const NAV_SECTIONS: NavSection[] = [
     items: [
       { id: "payments", label: "Payments", icon: CreditCard, href: "/payments" },
       { id: "expenses", label: "Expenses", icon: Receipt, href: "/expenses" },
-      { id: "reports", label: "Reports", icon: BarChart3, href: "/reports" },
       { id: "sales", label: "Sales History", icon: History, href: "/sales" },
     ],
   },
@@ -78,7 +74,6 @@ const NAV_SECTIONS: NavSection[] = [
     title: "Administration",
     items: [
       { id: "shifts", label: "Shift Management", icon: Lock, href: "/shifts" },
-      { id: "settings", label: "Settings", icon: Settings, href: "/settings" },
     ],
   },
   {
