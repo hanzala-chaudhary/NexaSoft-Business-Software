@@ -631,7 +631,9 @@ export default function PaymentsPage() {
                       )}
                     </TableCell>
                     <TableCell>
-                      <p className="font-semibold text-slate-800">{p.party?.name ?? "-"}</p>
+                      <p className="font-semibold text-slate-800">
+                        {p.party?.name ?? (p.invoice?.kind === "sale" ? "Walk-in Customer" : "-")}
+                      </p>
                       {p.party?.phone && <p className="text-xs text-slate-400">{p.party.phone}</p>}
                     </TableCell>
                     <TableCell>
