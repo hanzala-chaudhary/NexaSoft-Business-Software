@@ -210,17 +210,21 @@ export default function PaymentsPage() {
 
     try {
       setIsSaving(true);
-      const body: Record<string, any> = {
-        type: payType,
+      const body = {
         amount: numericAmount,
         method,
         referenceNumber: referenceNumber.trim() || undefined,
         notes: notes.trim() || undefined,
       };
-      if (payType === "CUSTOMER_RECEIPT") body.customerId = selectedParty.id;
-      else body.supplierId = selectedParty.id;
 
-      const res = await fetch(`${API_URL}/payments`, {
+      // Use the existing, already-tested endpoints so allocation logic stays
+      // in one place (CustomersService / SuppliersService), never duplicated here.
+      const endpoint =
+        payType === "CUSTOMER_RECEIPT"
+          ? `${API_URL}/customers/${selectedParty.id}/receive-payment`
+          : `${API_URL}/suppliers/${selectedParty.id}/pay`;
+
+      const res = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
@@ -230,12 +234,12 @@ export default function PaymentsPage() {
 
       await fetchPayments(1, false);
 
-      const appliedInfo =
-        result.appliedToInvoices > 0
-          ? ` ${result.appliedToInvoices} invoice(s) par apply hui.`
-          : "";
+      const appliedCount = result.appliedToSalesCount ?? result.appliedToPurchasesCount ?? 0;
+      const appliedInfo = appliedCount > 0 ? ` ${appliedCount} invoice(s) par apply hui.` : "";
       const advanceInfo =
-        result.advanceAmount > 0 ? ` Rs. ${Number(result.advanceAmount).toLocaleString()} advance/on-account rakha gaya.` : "";
+        result.advanceAmount > 0
+          ? ` Rs. ${Number(result.advanceAmount).toLocaleString()} advance/on-account rakha gaya.`
+          : "";
       setSuccessMsg(`Payment record ho gayi.${appliedInfo}${advanceInfo}`);
 
       setTimeout(() => {
@@ -249,15 +253,20 @@ export default function PaymentsPage() {
     }
   }
 
-  async function handleDelete(id: string) {
+  async function handleDelete(payment: any) {
     if (!window.confirm("Kya aap is payment ko void karna chahte hain? Related invoice ka balance wapis update ho jayega.")) {
       return;
     }
     try {
-      setDeletingId(id);
-      const res = await fetch(`${API_URL}/payments/${id}`, { method: "DELETE" });
+      setDeletingId(payment.id);
+      const isCustomerSide = payment.party?.kind === "customer" || payment.type === "CUSTOMER_RECEIPT";
+      const endpoint = isCustomerSide
+        ? `${API_URL}/customers/payments/${payment.id}/void`
+        : `${API_URL}/suppliers/payments/${payment.id}/void`;
+
+      const res = await fetch(endpoint, { method: "POST" });
       const result = await res.json();
-      if (!res.ok) throw new Error(result.message || "Payment delete nahi ho saki!");
+      if (!res.ok) throw new Error(result.message || "Payment void nahi ho saki!");
       await fetchPayments(1, false);
     } catch (error: any) {
       alert(error.message);
@@ -643,7 +652,7 @@ export default function PaymentsPage() {
                     </TableCell>
                     <TableCell>
                       <button
-                        onClick={() => handleDelete(p.id)}
+                        onClick={() => handleDelete(p)}
                         disabled={deletingId === p.id}
                         className="text-slate-300 hover:text-rose-600 transition-colors disabled:opacity-50"
                         title="Void this payment"

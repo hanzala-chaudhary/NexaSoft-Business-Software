@@ -1,15 +1,26 @@
-import { IsEnum, IsInt, IsOptional, IsString, IsUUID, Max, Min } from 'class-validator';
+import { IsEnum, IsIn, IsInt, IsOptional, IsString, IsUUID, Max, Min } from 'class-validator';
 import { Type } from 'class-transformer';
-import { PaymentMethod, PaymentType } from './create-payment.dto';
+
+export enum PaymentMethod {
+  CASH = 'CASH',
+  BANK_TRANSFER = 'BANK_TRANSFER',
+  CHEQUE = 'CHEQUE',
+  CARD = 'CARD',
+  ONLINE = 'ONLINE',
+  OTHER = 'OTHER',
+}
 
 export class QueryPaymentDto {
   @IsOptional()
   @IsString()
   search?: string;
 
+  // This is a DIRECTION filter (money in vs money out) — not the raw `type` column
+  // in the DB, which has several legacy values depending on which part of the app
+  // created the row (CUSTOMER_PAYMENT, CUSTOMER_ADVANCE, SALE_PAYMENT, etc).
   @IsOptional()
-  @IsEnum(PaymentType)
-  type?: PaymentType;
+  @IsIn(['CUSTOMER_RECEIPT', 'SUPPLIER_PAYMENT'])
+  type?: string;
 
   @IsOptional()
   @IsEnum(PaymentMethod)
