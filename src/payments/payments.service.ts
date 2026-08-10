@@ -64,15 +64,16 @@ export class PaymentsService {
       this.prisma.payment.groupBy({
         by: ['type'],
         where,
+        orderBy: { type: 'asc' },
         _sum: { amount: true },
       }),
     ]);
 
     const totalReceived = Number(
-      aggregates.find((a) => a.type === PaymentType.CUSTOMER_RECEIPT)?._sum.amount ?? 0,
+      aggregates.find((a) => a.type === PaymentType.CUSTOMER_RECEIPT)?._sum?.amount ?? 0,
     );
     const totalPaid = Number(
-      aggregates.find((a) => a.type === PaymentType.SUPPLIER_PAYMENT)?._sum.amount ?? 0,
+      aggregates.find((a) => a.type === PaymentType.SUPPLIER_PAYMENT)?._sum?.amount ?? 0,
     );
 
     const todayStart = new Date();
