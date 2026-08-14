@@ -371,7 +371,7 @@ export default function PurchasesPage() {
               <Plus className="h-5 w-5" /> Execute New Purchase
             </Button>
           </DialogTrigger>
-          <DialogContent className="max-w-6xl max-h-[95vh] overflow-y-auto bg-slate-50 p-0 border-0 shadow-2xl">
+          <DialogContent className="sm:max-w-6xl max-h-[95vh] overflow-y-auto bg-slate-50 p-0 border-0 shadow-2xl">
             <form onSubmit={handleSavePurchase} className="flex flex-col h-full">
               <div className="bg-slate-900 px-6 py-5 text-white flex justify-between items-center sticky top-0 z-20">
                 <div>
@@ -734,7 +734,7 @@ export default function PurchasesPage() {
 
       {/* DIALOG: View Invoice Details */}
       <Dialog open={!!viewInvoice} onOpenChange={(open) => !open && setViewInvoice(null)}>
-        <DialogContent className="max-w-3xl p-0 overflow-hidden bg-slate-50">
+        <DialogContent className="sm:max-w-3xl p-0 overflow-hidden bg-slate-50">
           {viewInvoice && (
             <>
               <div className="bg-slate-900 px-6 py-4 text-white flex justify-between items-center">
