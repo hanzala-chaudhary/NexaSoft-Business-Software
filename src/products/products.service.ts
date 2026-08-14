@@ -12,10 +12,10 @@ export class ProductsService {
   async scanSerialNumber(serial_number: string) {
     const item = await this.prisma.serialized_products.findFirst({
       where: { serial_number },
-      include: { 
-        products: { 
-          include: { category: true, brand: true } 
-        } 
+      include: {
+        products: {
+          include: { category: true, brand: true },
+        },
       },
     });
 
@@ -23,7 +23,6 @@ export class ProductsService {
       throw new NotFoundException(`Serial number '${serial_number}' hamare system mein majood nahi hai!`);
     }
 
-    // 🔴 VIP FIX: POS Validation - Check if item is already sold or damaged
     if (item.status === 'SOLD') {
       throw new BadRequestException(`Serial '${serial_number}' pehle hi kisi customer ko sale ho chuka hai!`);
     }
@@ -31,7 +30,6 @@ export class ProductsService {
       throw new BadRequestException(`Alert! Is hardware ka status '${item.status}' hai. Ise sale nahi kiya ja sakta.`);
     }
 
-    // Return exact format required by our React POS Frontend
     return {
       serialId: item.id,
       serialNumber: item.serial_number,
@@ -40,7 +38,7 @@ export class ProductsService {
       brand: item.products.brand?.name || 'Unknown',
       category: item.products.category?.name || 'Unknown',
       purchaseCost: Number(item.products.purchasePrice) || 0,
-      price: Number(item.products.salePrice) || 0
+      price: Number(item.products.salePrice) || 0,
     };
   }
 
@@ -70,7 +68,7 @@ export class ProductsService {
         sale: true,
         customer: true,
       },
-      take: 30, // Limit optimized for fast performance
+      take: 30,
     });
 
     const resultMap = new Map<string, any>();
@@ -97,6 +95,41 @@ export class ProductsService {
   }
 
   // =======================================================
+  // 🧯 SHARED ERROR TRANSLATOR
+  // Generic "database mein save nahi ho saka" ki jagah exact wajah batata hai —
+  // duplicate barcode, invalid category/brand, ya koi aur specific Prisma error.
+  // =======================================================
+  private friendlyDbError(error: unknown, entityLabel: string): BadRequestException {
+    if (error instanceof Prisma.PrismaClientKnownRequestError) {
+      if (error.code === 'P2002') {
+        const target = error.meta?.target as string[] | string | undefined;
+        const fields = Array.isArray(target) ? target.join(', ') : String(target ?? '');
+
+        if (fields.includes('master_barcode')) {
+          return new BadRequestException('Yeh barcode pehle se kisi aur product mein use ho raha hai!');
+        }
+        if (fields.includes('sku')) {
+          return new BadRequestException('Yeh SKU pehle se maujood hai — dobara try karein.');
+        }
+        if (fields.includes('slug')) {
+          return new BadRequestException('Isi naam ka product pehle se maujood hai.');
+        }
+        return new BadRequestException(`Yeh entry (${fields || 'field'}) pehle se maujood hai!`);
+      }
+
+      if (error.code === 'P2003') {
+        return new BadRequestException(
+          'Selected category ya brand system mein nahi mila. Page refresh karke dobara try karein.',
+        );
+      }
+    }
+
+    console.error(`❌ ${entityLabel} Database Error:`, error);
+    const rawMessage = error instanceof Error ? error.message : 'Unknown error';
+    return new BadRequestException(`${entityLabel} database mein save nahi ho saka! (${rawMessage})`);
+  }
+
+  // =======================================================
   // ➕ CREATE NEW PRODUCT CATALOG
   // =======================================================
   async createProduct(data: any) {
@@ -109,7 +142,27 @@ export class ProductsService {
     if (data.purchasePrice === undefined || data.purchasePrice === null || isNaN(Number(data.purchasePrice))) {
       throw new BadRequestException('Purchase price zaroori hai aur number honi chahiye!');
     }
-    
+
+    // Category/Brand agar diye gaye hain, unka wajood pehle hi check kar lo —
+    // warna foreign-key error generic "database mein save nahi ho saka" bata deta tha
+    // aur client ko pata hi nahi chalta tha ke asal masla category select karne mein tha
+    if (data.categoryId) {
+      const category = await this.prisma.category.findFirst({
+        where: { id: data.categoryId, deleted_at: null },
+      });
+      if (!category) {
+        throw new BadRequestException('Selected category system mein nahi mili. Pehle category add karein.');
+      }
+    }
+    if (data.brandId) {
+      const brand = await this.prisma.brand.findFirst({
+        where: { id: data.brandId, deleted_at: null },
+      });
+      if (!brand) {
+        throw new BadRequestException('Selected brand system mein nahi mila. Pehle brand add karein.');
+      }
+    }
+
     const generatedSku = `PRD-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`;
     const generatedSlug = data.name.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-') + '-' + Date.now();
 
@@ -119,7 +172,6 @@ export class ProductsService {
           name: data.name.trim(),
           sku: generatedSku,
           slug: generatedSlug,
-          // Serialized product ho to master_barcode kabhi save nahi karte
           master_barcode: data.isSerialized ? null : data.masterBarcode?.trim() || null,
           purchasePrice: Number(data.purchasePrice) || 0,
           salePrice: Number(data.salePrice),
@@ -131,11 +183,7 @@ export class ProductsService {
         },
       });
     } catch (error) {
-      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
-        throw new BadRequestException('Yeh barcode pehle se kisi aur product mein use ho raha hai!');
-      }
-      console.error('❌ Prisma Database Error:', error);
-      throw new BadRequestException('Product database mein save nahi ho saka!');
+      throw this.friendlyDbError(error, 'Product');
     }
   }
 
@@ -144,15 +192,15 @@ export class ProductsService {
   // =======================================================
   async getAllProducts() {
     return this.prisma.product.findMany({
-      where: { deleted_at: null }, // Sirf active items
-      orderBy: { createdAt: 'desc' }, // 🔴 VIP FIX: 'created_at' ko 'createdAt' kiya
+      where: { deleted_at: null },
+      orderBy: { createdAt: 'desc' },
       include: { category: true, brand: true },
     });
   }
 
   async getProductById(id: string) {
-    const product = await this.prisma.product.findFirst({ 
-      where: { id, deleted_at: null } 
+    const product = await this.prisma.product.findFirst({
+      where: { id, deleted_at: null },
     });
     if (!product) {
       throw new NotFoundException('Product nahi mila ya delete ho chuka hai!');
@@ -165,6 +213,23 @@ export class ProductsService {
   // =======================================================
   async updateProduct(id: string, data: any) {
     await this.getProductById(id);
+
+    if (data.categoryId) {
+      const category = await this.prisma.category.findFirst({
+        where: { id: data.categoryId, deleted_at: null },
+      });
+      if (!category) {
+        throw new BadRequestException('Selected category system mein nahi mili. Pehle category add karein.');
+      }
+    }
+    if (data.brandId) {
+      const brand = await this.prisma.brand.findFirst({
+        where: { id: data.brandId, deleted_at: null },
+      });
+      if (!brand) {
+        throw new BadRequestException('Selected brand system mein nahi mila. Pehle brand add karein.');
+      }
+    }
 
     try {
       return await this.prisma.product.update({
@@ -181,11 +246,7 @@ export class ProductsService {
         },
       });
     } catch (error) {
-      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
-        throw new BadRequestException('Yeh barcode pehle se kisi aur product mein use ho raha hai!');
-      }
-      console.error('Update Error:', error);
-      throw new BadRequestException('Product update nahi ho saka!');
+      throw this.friendlyDbError(error, 'Product');
     }
   }
 
@@ -196,12 +257,11 @@ export class ProductsService {
     await this.getProductById(id);
 
     try {
-      // 🔴 VIP FIX: Hard delete (deleteMany) ki bajaye Soft Delete taake Invoice history zinda rahay
       return await this.prisma.product.update({
         where: { id },
-        data: { 
+        data: {
           deleted_at: new Date(),
-          is_active: false 
+          is_active: false,
         },
       });
     } catch (error) {

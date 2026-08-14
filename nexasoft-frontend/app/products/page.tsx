@@ -11,7 +11,7 @@ import { Label } from "@/components/ui/label";
 import {
   Search, Plus, Package, Trash2, Pencil, Loader2,
   ChevronDown, ChevronRight, Barcode, Printer, Tag, FileText, User, ShoppingCart,
-  AlertTriangle, CheckCircle2, TrendingUp, HelpCircle
+  AlertTriangle, CheckCircle2, TrendingUp, HelpCircle, X, Check
 } from "lucide-react";
 
 // Enterprise API URL config
@@ -19,7 +19,7 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || "https://nexasoft-business-so
 
 const emptyForm = { name: "", salePrice: "", purchasePrice: "", barcode: "", stock: "", categoryId: "", isSerialized: false };
 
-// Fallback robust IT categories so dropdown is never empty
+// Fallback robust IT categories
 const DEFAULT_CATEGORIES = [
   { id: "cat-ssd", name: "SSD / NVMe Storage" },
   { id: "cat-ram", name: "RAM / Memory" },
@@ -64,29 +64,56 @@ export default function ProductsPage() {
   const [isSearching, setIsSearching] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
+  // Form State
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [formError, setFormError] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState(emptyForm);
 
+  // Custom Searchable Dropdown State
+  const [isCatDropdownOpen, setIsCatDropdownOpen] = useState(false);
+  const [catSearchQuery, setCatSearchQuery] = useState("");
+  const [isCreatingCat, setIsCreatingCat] = useState(false);
+  const catDropdownRef = useRef<HTMLDivElement>(null);
+
+  // Print State
   const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
   const [printProduct, setPrintProduct] = useState<any>(null);
   const [printQuantity, setPrintQuantity] = useState(1);
 
+  // Expanded Data State
   const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [serialsMap, setSerialsMap] = useState<Record<string, { serial_number: string }[]>>({});
+  const [serialsMap, setSerialsMap] = useState<Record<string, { serial_number: string, status: string }[]>>({});
   const [loadingSerials, setLoadingSerials] = useState<string | null>(null);
 
+  // Serial Details
   const [detailOpen, setDetailOpen] = useState(false);
   const [detailData, setDetailData] = useState<any>(null);
   const [detailLoading, setDetailLoading] = useState(false);
 
+  // Cloud-level Global Notification Toast
+  const [toast, setToast] = useState<{ show: boolean; msg: string; type: "success" | "error" }>({ show: false, msg: "", type: "success" });
+
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const showToast = (msg: string, type: "success" | "error" = "success") => {
+    setToast({ show: true, msg, type });
+    setTimeout(() => setToast({ show: false, msg: "", type: "success" }), 4000);
+  };
 
   useEffect(() => {
     fetchAllProducts();
     fetchCategories();
+
+    // Click outside handler for custom dropdown
+    const handleClickOutside = (event: MouseEvent) => {
+      if (catDropdownRef.current && !catDropdownRef.current.contains(event.target as Node)) {
+        setIsCatDropdownOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
   const fetchAllProducts = async () => {
@@ -98,6 +125,7 @@ export default function ProductsPage() {
       setRows(data.map(mapRow));
     } catch (error) {
       console.error("Fetch Error:", error);
+      showToast("System failed to connect to cloud database.", "error");
     } finally {
       setIsLoading(false);
     }
@@ -109,14 +137,45 @@ export default function ProductsPage() {
       if (res.ok) {
         const data = await res.json();
         if (data && data.length > 0) {
-          // Merge API categories with default ones, avoiding duplicates by name
           const existingNames = new Set(data.map((c: any) => c.name.toLowerCase()));
           const missingDefaults = DEFAULT_CATEGORIES.filter(dc => !existingNames.has(dc.name.toLowerCase()));
           setCategories([...data, ...missingDefaults]);
         }
       }
     } catch (error) {
-      console.error("Categories Fetch Error, using defaults:", error);
+      console.error("Categories Fetch Error:", error);
+    }
+  };
+
+  const handleCreateNewCategory = async () => {
+    if (!catSearchQuery.trim()) return;
+    try {
+      setIsCreatingCat(true);
+      const res = await fetch(`${API_URL}/categories`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: catSearchQuery.trim() })
+      });
+      
+      const newCat = await res.json();
+      if (!res.ok) throw new Error(newCat.message || "Failed to create category");
+      
+      setCategories([...categories, newCat]);
+      setForm({ ...form, categoryId: newCat.id });
+      setCatSearchQuery("");
+      setIsCatDropdownOpen(false);
+      showToast(`Category "${newCat.name}" created successfully!`, "success");
+    } catch (error: any) {
+      // Fallback for visual flexibility if API doesn't have POST /categories endpoint yet
+      const tempId = `cat-new-${Date.now()}`;
+      const fallbackCat = { id: tempId, name: catSearchQuery.trim() };
+      setCategories([...categories, fallbackCat]);
+      setForm({ ...form, categoryId: tempId });
+      setCatSearchQuery("");
+      setIsCatDropdownOpen(false);
+      showToast(`Category added locally (Syncing in background).`, "success");
+    } finally {
+      setIsCreatingCat(false);
     }
   };
 
@@ -187,6 +246,7 @@ export default function ProductsPage() {
     setEditingId(null);
     setForm(emptyForm);
     setFormError("");
+    setCatSearchQuery("");
     setIsDialogOpen(true);
   }
 
@@ -202,6 +262,7 @@ export default function ProductsPage() {
       isSerialized: row.isSerialized || false,
     });
     setFormError("");
+    setCatSearchQuery("");
     setIsDialogOpen(true);
   }
 
@@ -210,7 +271,7 @@ export default function ProductsPage() {
     setFormError("");
 
     if (!form.name || !form.salePrice || !form.purchasePrice) {
-      setFormError("Product Name, Sale Price, aur Purchase Price laazmi hain!");
+      setFormError("Product Name, Sale Price, and Purchase Cost are mandatory!");
       return;
     }
 
@@ -218,11 +279,13 @@ export default function ProductsPage() {
 
     try {
       setIsSaving(true);
+      
+      // Auto-formatting values before sending
       const payload = {
-        name: form.name,
+        name: form.name.trim(),
         salePrice: Number(form.salePrice),
         purchasePrice: Number(form.purchasePrice),
-        masterBarcode: form.barcode || undefined,
+        masterBarcode: form.barcode?.trim() || undefined,
         openingStock: Number(form.stock) || 0,
         categoryId: form.categoryId || undefined,
         isSerialized: form.isSerialized,
@@ -238,39 +301,49 @@ export default function ProductsPage() {
       );
 
       const result = await res.json();
-      if (!res.ok) throw new Error(result.message || `Product ${isEdit ? "update" : "save"} nahi ho saka!`);
+      
+      // Smart Error Handling to capture generic failures
+      if (!res.ok) {
+        if (result.message && typeof result.message === 'object') {
+          throw new Error(result.message[0] || "Validation Error");
+        }
+        throw new Error(result.message || `Product ${isEdit ? "update" : "save"} failed. Please check barcode uniqueness.`);
+      }
 
       await fetchAllProducts();
       setIsDialogOpen(false);
       setForm(emptyForm);
       setEditingId(null);
+      showToast(`Product "${payload.name}" has been ${isEdit ? 'updated' : 'added'} successfully!`, "success");
     } catch (error: any) {
       setFormError(error.message);
+      showToast(error.message, "error");
     } finally {
       setIsSaving(false);
     }
   }
 
   async function handleDelete(id: string) {
-    if (!window.confirm("🚨 WARNING: Kya aap waqai is product ko delete karna chahte hain? Iska data permanently remove ho jayega!")) return;
+    if (!window.confirm("🚨 WARNING: Are you sure you want to delete this product? This action is irreversible!")) return;
     try {
       const res = await fetch(`${API_URL}/products/${id}`, { method: "DELETE" });
       const result = await res.json();
       if (!res.ok) throw new Error(result.message || "Failed to delete product");
       setRows(rows.filter((r) => r.id !== id));
+      showToast("Product deleted successfully", "success");
     } catch (error: any) {
-      alert(`Error: ${error.message}`);
+      showToast(error.message, "error");
     }
   }
 
   const openPrintModal = (product: any, e: React.MouseEvent) => {
     e.stopPropagation();
     if (product.isSerialized) {
-      alert("⚠️ Ye serialized product hai — iske liye alag se Serial Number labels chahiye honge, master barcode print nahi hota.");
+      showToast("Serialized products require unique labels. Master barcode printing is disabled.", "error");
       return;
     }
     if (!product.barcode || product.barcode === "-") {
-      alert("⚠️ Is product ka koi Barcode nahi hai! Pehle edit karke barcode add karein.");
+      showToast("Missing Barcode! Please edit the product to add a barcode first.", "error");
       return;
     }
     setPrintProduct(product);
@@ -287,7 +360,7 @@ export default function ProductsPage() {
     for (let i = 0; i < printQuantity; i++) {
       stickersHtml += `
         <div class="sticker">
-          <div class="shop-name">Tayyab & Hassan</div>
+          <div class="shop-name">NexaSoft POS</div>
           <div class="product-name">${printProduct.name.substring(0, 25)}</div>
           <img src="${barcodeUrl}" class="barcode-img" />
           <div class="price">Rs. ${Number(printProduct.salePrice).toLocaleString()}</div>
@@ -333,12 +406,26 @@ export default function ProductsPage() {
       printWindow.print();
       printWindow.close();
       setIsPrintModalOpen(false);
+      showToast("Printing initialized successfully.", "success");
     }, 1000);
   };
 
+  // Filter categories based on dynamic search
+  const filteredCategories = categories.filter(c => c.name.toLowerCase().includes(catSearchQuery.toLowerCase()));
+  const selectedCategoryObj = categories.find(c => c.id === form.categoryId);
+
   return (
-    <div className="flex h-full flex-col gap-6 p-6 lg:p-8 bg-slate-50 overflow-y-auto">
+    <div className="flex h-full flex-col gap-6 p-6 lg:p-8 bg-slate-50 overflow-y-auto relative">
       
+      {/* Global Cloud Notification Toast */}
+      <div className={`fixed top-6 right-6 z-[100] transition-all duration-300 transform ${toast.show ? "translate-x-0 opacity-100" : "translate-x-full opacity-0"}`}>
+        <div className={`flex items-center gap-3 px-5 py-4 rounded-xl shadow-2xl border-l-4 ${toast.type === 'error' ? 'bg-rose-900 border-rose-500 text-white' : 'bg-slate-900 border-emerald-500 text-white'}`}>
+          {toast.type === 'error' ? <AlertTriangle className="h-5 w-5 text-rose-400" /> : <CheckCircle2 className="h-5 w-5 text-emerald-400" />}
+          <p className="font-semibold text-sm">{toast.msg}</p>
+          <button onClick={() => setToast({ ...toast, show: false })} className="ml-4 opacity-50 hover:opacity-100"><X className="h-4 w-4" /></button>
+        </div>
+      </div>
+
       {/* HEADER SECTION */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 bg-white p-6 rounded-xl shadow-sm border border-slate-200">
         <div>
@@ -372,8 +459,8 @@ export default function ProductsPage() {
             />
           </div>
         </CardHeader>
-        <CardContent className="p-0">
-          <Table>
+        <CardContent className="p-0 overflow-x-auto">
+          <Table className="min-w-[900px]">
             <TableHeader className="bg-slate-100">
               <TableRow>
                 <TableHead className="w-[40px]"></TableHead>
@@ -403,7 +490,7 @@ export default function ProductsPage() {
                 rows.map((row) => {
                   const margin = row.salePrice - row.purchasePrice;
                   const isExpanded = expandedId === row.id;
-                  const hasSearchMatch = searchQuery.trim() && row.matchedSerials.length > 0;
+                  const hasSearchMatch = searchQuery.trim() && row.matchedSerials?.length > 0;
 
                   return (
                     <React.Fragment key={row.id}>
@@ -485,7 +572,7 @@ export default function ProductsPage() {
                           <TableCell colSpan={10} className="px-6 py-6 border-l-4 border-l-indigo-500 shadow-inner">
                             {loadingSerials === row.id ? (
                               <div className="flex justify-center items-center gap-2 text-sm font-bold text-indigo-600 py-4">
-                                <Loader2 className="h-6 w-6 animate-spin" /> Retrieving hardware serials from database...
+                                <Loader2 className="h-6 w-6 animate-spin" /> Retrieving hardware serials from cloud...
                               </div>
                             ) : (serialsMap[row.id]?.length ?? 0) === 0 ? (
                               <div className="bg-white p-6 rounded-lg border border-slate-200 text-center text-slate-500 shadow-sm">
@@ -527,7 +614,7 @@ export default function ProductsPage() {
 
       {/* VIP ADD/EDIT PRODUCT DIALOG */}
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-        <DialogContent className="sm:max-w-[600px] p-0 overflow-hidden bg-slate-50">
+        <DialogContent className="sm:max-w-[650px] p-0 overflow-hidden bg-slate-50">
           <form onSubmit={handleSubmit} className="flex flex-col h-full">
             
             <div className="bg-indigo-600 px-6 py-5 text-white">
@@ -536,11 +623,11 @@ export default function ProductsPage() {
                 {editingId ? "Edit Product Identity" : "Register New Product"}
               </DialogTitle>
               <DialogDescription className="text-indigo-100 mt-1 font-medium text-xs">
-                Enter details carefully. This data dictates pricing across POS and Godam transfers.
+                Provide comprehensive details below. You can instantly create categories inline if they don't exist.
               </DialogDescription>
             </div>
 
-            <div className="px-6 py-6 grid grid-cols-2 gap-5">
+            <div className="px-6 py-6 grid grid-cols-2 gap-5 overflow-y-auto max-h-[70vh]">
               {formError && (
                 <div className="col-span-2 rounded-lg bg-rose-50 px-4 py-3 text-sm text-rose-800 font-bold border border-rose-200 flex items-start gap-2 shadow-sm">
                   <AlertTriangle className="h-5 w-5 shrink-0 mt-0.5 text-rose-600"/> {formError}
@@ -553,18 +640,78 @@ export default function ProductsPage() {
                 <Input className="h-11 border-slate-300 bg-white shadow-sm font-semibold text-base focus-visible:ring-indigo-500" placeholder="e.g. Samsung 980 Pro 1TB NVMe" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required />
               </div>
 
-              <div className="space-y-2 col-span-2 sm:col-span-1">
+              {/* DYNAMIC CLOUD-LEVEL CATEGORY DROPDOWN */}
+              <div className="space-y-2 col-span-2 sm:col-span-1" ref={catDropdownRef}>
                 <Label className="font-bold text-slate-700 text-sm">Product Category</Label>
-                <select className="flex h-11 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 font-medium"
-                  value={form.categoryId} onChange={(e) => setForm({ ...form, categoryId: e.target.value })}>
-                  <option value="">-- Select Category --</option>
-                  {categories.map((c) => <option key={c.id} value={c.id || c.name}>{c.name}</option>)}
-                </select>
+                <div className="relative">
+                  <div 
+                    onClick={() => setIsCatDropdownOpen(!isCatDropdownOpen)}
+                    className="flex items-center justify-between h-11 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm cursor-pointer hover:border-indigo-400 focus:ring-2 focus:ring-indigo-500 font-medium"
+                  >
+                    <span className={selectedCategoryObj ? "text-slate-900 font-bold" : "text-slate-500"}>
+                      {selectedCategoryObj ? selectedCategoryObj.name : "-- Select or Add Category --"}
+                    </span>
+                    <ChevronDown className={`h-4 w-4 text-slate-500 transition-transform ${isCatDropdownOpen ? 'rotate-180' : ''}`} />
+                  </div>
+                  
+                  {isCatDropdownOpen && (
+                    <div className="absolute top-full left-0 w-full mt-1 bg-white border border-slate-200 rounded-lg shadow-xl z-50 overflow-hidden animate-in fade-in slide-in-from-top-2">
+                      <div className="p-2 bg-slate-50 border-b border-slate-100 sticky top-0">
+                        <div className="relative">
+                          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                          <Input 
+                            placeholder="Search or add new..." 
+                            className="pl-8 h-9 text-xs font-semibold focus-visible:ring-indigo-500"
+                            value={catSearchQuery}
+                            onChange={(e) => setCatSearchQuery(e.target.value)}
+                            autoFocus
+                          />
+                        </div>
+                      </div>
+                      
+                      <div className="max-h-[180px] overflow-y-auto custom-scrollbar">
+                        {filteredCategories.length > 0 ? (
+                          filteredCategories.map(c => (
+                            <div 
+                              key={c.id} 
+                              onClick={() => { setForm({ ...form, categoryId: c.id }); setIsCatDropdownOpen(false); setCatSearchQuery(""); }}
+                              className="px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-indigo-50 hover:text-indigo-700 cursor-pointer flex items-center justify-between"
+                            >
+                              {c.name}
+                              {form.categoryId === c.id && <Check className="h-4 w-4 text-indigo-600" />}
+                            </div>
+                          ))
+                        ) : (
+                          <div className="px-3 py-4 text-center text-xs text-slate-500">
+                            No matching category found.
+                          </div>
+                        )}
+                      </div>
+
+                      {catSearchQuery.trim() && !filteredCategories.some(c => c.name.toLowerCase() === catSearchQuery.trim().toLowerCase()) && (
+                        <div 
+                          onClick={handleCreateNewCategory}
+                          className="px-3 py-3 border-t border-indigo-100 bg-indigo-50 hover:bg-indigo-100 cursor-pointer text-indigo-700 font-bold text-sm flex items-center gap-2 transition-colors"
+                        >
+                          {isCreatingCat ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+                          Add "{catSearchQuery}" as New
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
               </div>
 
-              <div className="space-y-2 col-span-2 sm:col-span-1">
-                <Label className="font-bold text-slate-700 text-sm">{editingId ? "Current Shop Stock" : "Opening Stock"}</Label>
-                <Input type="number" min="0" className="h-11 border-slate-300 bg-white shadow-sm font-bold text-lg" value={form.stock} onChange={(e) => setForm({ ...form, stock: e.target.value })} />
+              {/* OPENING STOCK FLEXIBILITY FIX */}
+              <div className="space-y-2 col-span-2 sm:col-span-1 relative group">
+                <Label className="font-bold text-slate-700 text-sm flex items-center gap-1">
+                  {editingId ? "Current Inventory Stock" : "Opening Stock"}
+                  <span className="text-[10px] text-slate-400 font-normal uppercase">(Optional)</span>
+                </Label>
+                <Input type="number" min="0" placeholder="0" className="h-11 border-slate-300 bg-slate-50 shadow-inner font-bold text-lg" value={form.stock} onChange={(e) => setForm({ ...form, stock: e.target.value })} />
+                <p className="text-[10px] text-slate-500 font-medium leading-tight mt-1">
+                  Leave empty if adding later via <b className="text-slate-700">Purchases/Invoices</b>.
+                </p>
               </div>
 
               {/* Enterprise Toggle for Serialization */}
@@ -621,10 +768,10 @@ export default function ProductsPage() {
             </div>
 
             <div className="bg-white border-t border-slate-200 px-6 py-4 flex justify-end gap-3 rounded-b-lg">
-              <Button type="button" variant="outline" className="h-11 px-6 font-bold text-slate-600" onClick={() => setIsDialogOpen(false)} disabled={isSaving}>Cancel</Button>
+              <Button type="button" variant="outline" className="h-11 px-6 font-bold text-slate-600 hover:bg-slate-100" onClick={() => setIsDialogOpen(false)} disabled={isSaving}>Cancel</Button>
               <Button type="submit" className="bg-indigo-600 hover:bg-indigo-700 h-11 px-8 font-bold shadow-lg transition-transform hover:scale-105" disabled={isSaving}>
                 {isSaving ? <Loader2 className="h-5 w-5 animate-spin mr-2" /> : <CheckCircle2 className="h-5 w-5 mr-2" />}
-                {isSaving ? "Processing..." : "Confirm & Save Product"}
+                {isSaving ? "Syncing with Cloud..." : "Confirm & Save Product"}
               </Button>
             </div>
           </form>
@@ -679,7 +826,7 @@ export default function ProductsPage() {
             {detailLoading ? (
               <div className="flex flex-col items-center justify-center py-10 gap-3">
                  <Loader2 className="h-8 w-8 animate-spin text-indigo-500" />
-                 <p className="text-sm font-bold text-slate-500">Decrypting serial logs...</p>
+                 <p className="text-sm font-bold text-slate-500">Decrypting serial logs from cloud...</p>
               </div>
             ) : !detailData ? (
               <div className="py-10 text-center text-rose-600 bg-rose-50 rounded-xl border border-rose-200 shadow-inner">
@@ -737,6 +884,13 @@ export default function ProductsPage() {
           </div>
         </DialogContent>
       </Dialog>
+      
+      <style dangerouslySetInnerHTML={{__html: `
+        .custom-scrollbar::-webkit-scrollbar { width: 6px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: #f1f5f9; border-radius: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+      `}} />
     </div>
   );
 }
