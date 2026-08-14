@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -22,6 +22,16 @@ interface PurchaseItem {
 }
 
 const PAYMENT_METHODS = ["CASH", "BANK_TRANSFER", "CHEQUE", "CARD", "OTHER"];
+
+// Empty row factory — keeps a single source of truth for a "blank" item
+const emptyItem = (): PurchaseItem => ({
+  productId: "",
+  productName: "",
+  quantity: 1,
+  costPrice: 0,
+  serialNumbers: [],
+  scanInput: "",
+});
 
 export default function PurchasesPage() {
   const [purchases, setPurchases] = useState<any[]>([]);
@@ -77,7 +87,6 @@ export default function PurchasesPage() {
       setPurchases(Array.isArray(purchasesData) ? purchasesData : []);
       setSuppliers(Array.isArray(suppliersData) ? suppliersData : []);
       setProducts(Array.isArray(productsData) ? productsData : []);
-
     } catch (error) {
       console.error("Error fetching data:", error);
       showToast("Cloud Database Sync Failed!", "error");
@@ -88,7 +97,7 @@ export default function PurchasesPage() {
 
   useEffect(() => {
     fetchData();
-    
+
     // Outside click handler for custom product dropdowns
     const handleClickOutside = (event: MouseEvent) => {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
@@ -99,43 +108,61 @@ export default function PurchasesPage() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  // Pro Shortcuts
+  // FIX: addItemRow now uses the functional setState form, so it never
+  // depends on a stale `items` snapshot — safe to call from anywhere,
+  // including keyboard shortcuts, without losing previously added rows.
+  const addItemRow = useCallback(() => {
+    setItems((prev) => [emptyItem(), ...prev]);
+    showToast('New Item row added. (Tip: Use F8 to quickly add rows)', "info");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Pro Shortcuts — F2 save, F8 add row.
+  // Ignored while typing inside inputs/selects/textareas EXCEPT F8 add-row,
+  // so scanning/typing serials or product search doesn't get interrupted by F2.
   useEffect(() => {
+    if (!isDialogOpen) return;
+
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (isDialogOpen && e.key === "F2") {
+      const target = e.target as HTMLElement;
+      const isTyping = ["INPUT", "TEXTAREA", "SELECT"].includes(target?.tagName);
+
+      if (e.key === "F2") {
         e.preventDefault();
         document.getElementById("btn-save-purchase")?.click();
+        return;
       }
-      if (isDialogOpen && e.key === "F8") {
+      if (e.key === "F8") {
         e.preventDefault();
         addItemRow();
+        return;
       }
     };
+
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isDialogOpen]);
-
-  const addItemRow = () => {
-    setItems([{ productId: "", productName: "", quantity: 1, costPrice: 0, serialNumbers: [], scanInput: "" }, ...items]);
-    showToast("New Item row added. (Tip: Use F8 to quickly add rows)", "info");
-  };
+  }, [isDialogOpen, addItemRow]);
 
   const updateItem = (index: number, field: string, value: any) => {
-    const newItems = [...items];
-    (newItems[index] as any)[field] = value;
+    setItems((prev) => {
+      const newItems = [...prev];
+      const target = { ...newItems[index] } as any;
+      target[field] = value;
 
-    if (field === "productId") {
-      const selectedProduct = products.find((p) => p.id === value);
-      if (selectedProduct) {
-        newItems[index].costPrice = selectedProduct.purchasePrice || 0;
-        newItems[index].productName = selectedProduct.name;
+      if (field === "productId") {
+        const selectedProduct = products.find((p) => p.id === value);
+        if (selectedProduct) {
+          target.costPrice = selectedProduct.purchasePrice || 0;
+          target.productName = selectedProduct.name;
+        }
       }
-    }
 
-    setItems(newItems);
+      newItems[index] = target;
+      return newItems;
+    });
   };
 
-  // ADVANCED: Bulk Scan & Comma-separated Serial Engine
+  // Bulk Scan & Comma/space-separated Serial Engine
   const handleScanKeyDown = (index: number, e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key !== "Enter") return;
     e.preventDefault();
@@ -145,43 +172,56 @@ export default function PurchasesPage() {
 
     // Support for bulk pasting from excel (comma or space separated)
     const newSerialsArray = rawValue.split(/[\s,]+/).filter(Boolean);
-    const newItems = [...items];
-    const currentSerials = new Set(newItems[index].serialNumbers);
-    
-    let addedCount = 0;
-    let duplicateCount = 0;
 
-    newSerialsArray.forEach(serial => {
-      if (currentSerials.has(serial)) {
-        duplicateCount++;
-      } else {
-        currentSerials.add(serial);
-        addedCount++;
-      }
+    setItems((prev) => {
+      const newItems = [...prev];
+      const currentSerials = new Set(newItems[index].serialNumbers);
+
+      let addedCount = 0;
+      let duplicateCount = 0;
+
+      newSerialsArray.forEach((serial) => {
+        if (currentSerials.has(serial)) {
+          duplicateCount++;
+        } else {
+          currentSerials.add(serial);
+          addedCount++;
+        }
+      });
+
+      newItems[index] = {
+        ...newItems[index],
+        serialNumbers: Array.from(currentSerials),
+        scanInput: "",
+        quantity: currentSerials.size,
+      };
+
+      // Toasts fired after state update (outside setState updater ideally,
+      // but kept simple here since counts are local to this closure)
+      setTimeout(() => {
+        if (addedCount > 0) showToast(`${addedCount} Serial(s) secured in batch.`, "success");
+        if (duplicateCount > 0) showToast(`${duplicateCount} Duplicate Serial(s) ignored!`, "error");
+      }, 0);
+
+      return newItems;
     });
-
-    newItems[index].serialNumbers = Array.from(currentSerials);
-    newItems[index].scanInput = "";
-    newItems[index].quantity = newItems[index].serialNumbers.length;
-    setItems(newItems);
-
-    if (addedCount > 0) showToast(`${addedCount} Serial(s) secured in batch.`, "success");
-    if (duplicateCount > 0) showToast(`${duplicateCount} Duplicate Serial(s) ignored!`, "error");
   };
 
   const removeSerial = (index: number, serial: string) => {
-    const newItems = [...items];
-    newItems[index].serialNumbers = newItems[index].serialNumbers.filter((s) => s !== serial);
-    if (newItems[index].serialNumbers.length > 0) {
-      newItems[index].quantity = newItems[index].serialNumbers.length;
-    } else {
-      newItems[index].quantity = 1; // reset to 1 if all serials removed
-    }
-    setItems(newItems);
+    setItems((prev) => {
+      const newItems = [...prev];
+      const updatedSerials = newItems[index].serialNumbers.filter((s) => s !== serial);
+      newItems[index] = {
+        ...newItems[index],
+        serialNumbers: updatedSerials,
+        quantity: updatedSerials.length > 0 ? updatedSerials.length : 1,
+      };
+      return newItems;
+    });
   };
 
   const removeItem = (index: number) => {
-    setItems(items.filter((_, i) => i !== index));
+    setItems((prev) => prev.filter((_, i) => i !== index));
   };
 
   // On-the-fly Supplier Addition
@@ -202,8 +242,8 @@ export default function PurchasesPage() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || "Failed to add supplier");
-      
-      setSuppliers([...suppliers, data]);
+
+      setSuppliers((prev) => [...prev, data]);
       setSupplierId(data.id);
       setIsQuickSupplierOpen(false);
       setNewSupplier({ name: "", phone: "", company: "" });
@@ -220,11 +260,13 @@ export default function PurchasesPage() {
   const balanceAmount = Math.max(0, totalAmount - paidNum);
   const derivedPaymentStatus = totalAmount > 0 && paidNum >= totalAmount ? "PAID" : paidNum > 0 ? "PARTIAL" : "PENDING";
 
+  // Cap amountPaid whenever EITHER value changes (previously only fired on totalAmount change)
   useEffect(() => {
-    if (Number(amountPaid) > totalAmount && totalAmount > 0) {
+    if (totalAmount > 0 && Number(amountPaid) > totalAmount) {
       setAmountPaid(String(totalAmount));
     }
-  }, [totalAmount]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [totalAmount, amountPaid]);
 
   const resetForm = () => {
     setSupplierId("");
@@ -241,6 +283,7 @@ export default function PurchasesPage() {
     if (!supplierId) return setFormError("Supplier selection is strictly required!");
     if (items.length === 0) return setFormError("Cannot generate an empty stock invoice!");
     if (items.some((i) => !i.productId)) return setFormError("Invalid product mapping in one or more rows!");
+    if (items.some((i) => Number(i.quantity) <= 0)) return setFormError("Quantity must be greater than zero in every row!");
     if (paidNum < 0) return setFormError("Paid amount logic error!");
 
     try {
@@ -287,18 +330,18 @@ export default function PurchasesPage() {
   };
 
   // Search filter for custom dropdown
-  const filteredProducts = products.filter(p => 
-    p.name.toLowerCase().includes(productSearch.toLowerCase()) || 
-    (p.master_barcode && p.master_barcode.includes(productSearch))
+  const filteredProducts = products.filter(
+    (p) =>
+      p.name.toLowerCase().includes(productSearch.toLowerCase()) ||
+      (p.master_barcode && p.master_barcode.includes(productSearch))
   );
 
   return (
     <div className="flex h-full flex-col gap-6 p-6 lg:p-8 bg-slate-50 relative overflow-y-auto">
-      
       {/* GLOBAL TOAST NOTIFICATION */}
       <div className={`fixed top-6 right-6 z-[200] transition-all duration-300 transform ${toast.show ? "translate-x-0 opacity-100" : "translate-x-full opacity-0"}`}>
-        <div className={`flex items-center gap-3 px-5 py-4 rounded-xl shadow-2xl border-l-4 ${toast.type === 'error' ? 'bg-rose-900 border-rose-500 text-white' : toast.type === 'info' ? 'bg-indigo-900 border-indigo-500 text-white' : 'bg-emerald-900 border-emerald-500 text-white'}`}>
-          {toast.type === 'error' ? <AlertCircle className="h-5 w-5" /> : toast.type === 'info' ? <ListPlus className="h-5 w-5" /> : <CheckCircle2 className="h-5 w-5" />}
+        <div className={`flex items-center gap-3 px-5 py-4 rounded-xl shadow-2xl border-l-4 ${toast.type === "error" ? "bg-rose-900 border-rose-500 text-white" : toast.type === "info" ? "bg-indigo-900 border-indigo-500 text-white" : "bg-emerald-900 border-emerald-500 text-white"}`}>
+          {toast.type === "error" ? <AlertCircle className="h-5 w-5" /> : toast.type === "info" ? <ListPlus className="h-5 w-5" /> : <CheckCircle2 className="h-5 w-5" />}
           <p className="font-semibold text-sm">{toast.msg}</p>
         </div>
       </div>
@@ -308,17 +351,19 @@ export default function PurchasesPage() {
           <h1 className="text-3xl font-extrabold tracking-tight text-slate-900 flex items-center gap-3">
             <Factory className="h-8 w-8 text-indigo-600" />
             Godam / Stock Entry
-            <Badge variant="outline" className="bg-indigo-50 text-indigo-700 border-indigo-200 ml-2 shadow-sm font-bold">Inward Logs</Badge>
+            <Badge variant="outline" className="bg-indigo-50 text-indigo-700 border-indigo-200 ml-2 shadow-sm font-bold">
+              Inward Logs
+            </Badge>
           </h1>
           <p className="text-sm text-slate-500 mt-1 font-medium">Register wholesale purchases, scan batch serials, and update physical ledgers.</p>
         </div>
 
         <Dialog
           open={isDialogOpen}
-          onOpenChange={(open) => { 
+          onOpenChange={(open) => {
             if (!open && items.length > 0 && !window.confirm("You have unsaved stock items. Are you sure you want to close?")) return;
-            setIsDialogOpen(open); 
-            if (!open) setFormError(""); 
+            setIsDialogOpen(open);
+            if (!open) setFormError("");
           }}
         >
           <DialogTrigger asChild>
@@ -328,11 +373,10 @@ export default function PurchasesPage() {
           </DialogTrigger>
           <DialogContent className="max-w-6xl max-h-[95vh] overflow-y-auto bg-slate-50 p-0 border-0 shadow-2xl">
             <form onSubmit={handleSavePurchase} className="flex flex-col h-full">
-              
               <div className="bg-slate-900 px-6 py-5 text-white flex justify-between items-center sticky top-0 z-20">
                 <div>
                   <DialogTitle className="text-2xl font-extrabold flex items-center gap-2">
-                     <FileText className="h-6 w-6 text-indigo-400" /> Secure Stock Entry (Godam IN)
+                    <FileText className="h-6 w-6 text-indigo-400" /> Secure Stock Entry (Godam IN)
                   </DialogTitle>
                   <p className="text-slate-400 font-medium text-xs mt-1">
                     System verifies duplicate serials instantly. Press <kbd className="bg-slate-700 px-1 py-0.5 rounded">F2</kbd> to save or <kbd className="bg-slate-700 px-1 py-0.5 rounded">F8</kbd> to add item block.
@@ -340,17 +384,18 @@ export default function PurchasesPage() {
                 </div>
               </div>
 
-              <div className="p-6 grid grid-cols-1 lg:grid-cols-4 gap-6">
-                
+              {/* CHANGED: breakpoint moved from lg -> md so the sidebar stacks
+                  earlier on narrower/tablet widths instead of squishing */}
+              <div className="p-6 grid grid-cols-1 md:grid-cols-4 gap-6">
                 {/* Main Content Area (Items) */}
-                <div className="lg:col-span-3 space-y-6">
+                <div className="md:col-span-3 space-y-6">
                   {formError && (
                     <div className="rounded-lg bg-rose-50 border border-rose-200 px-4 py-3 text-sm text-rose-800 font-bold flex items-center gap-2 shadow-sm">
                       <AlertCircle className="h-5 w-5 text-rose-600" /> {formError}
                     </div>
                   )}
 
-                  <div className="flex justify-between items-center bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+                  <div className="flex flex-wrap justify-between items-center gap-3 bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
                     <Label className="text-lg font-bold text-slate-800 flex items-center gap-2">
                       <Package className="h-5 w-5 text-indigo-500" /> Inward Consignment Items
                     </Label>
@@ -363,27 +408,29 @@ export default function PurchasesPage() {
                     {items.map((item, index) => (
                       <Card key={index} className="p-0 bg-white border-slate-200 shadow-sm overflow-hidden animate-in fade-in slide-in-from-bottom-4">
                         <div className="p-4 grid grid-cols-1 md:grid-cols-12 gap-4 bg-slate-50 border-b border-slate-100">
-                          
                           {/* DYNAMIC SEARCHABLE PRODUCT DROPDOWN */}
                           <div className="md:col-span-6 space-y-1 relative" ref={activeDropdownIndex === index ? dropdownRef : null}>
-                            <Label className="font-bold text-slate-700 text-xs uppercase tracking-wider">Select Product <span className="text-rose-500">*</span></Label>
-                            <div 
-                              onClick={() => { setActiveDropdownIndex(index === activeDropdownIndex ? null : index); setProductSearch(""); }}
+                            <Label className="font-bold text-slate-700 text-xs uppercase tracking-wider">
+                              Select Product <span className="text-rose-500">*</span>
+                            </Label>
+                            <div
+                              onClick={() => {
+                                setActiveDropdownIndex(index === activeDropdownIndex ? null : index);
+                                setProductSearch("");
+                              }}
                               className="flex items-center justify-between h-11 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-inner cursor-pointer hover:border-indigo-400 focus:ring-2 focus:ring-indigo-500 font-bold"
                             >
-                              <span className={item.productName ? "text-slate-900" : "text-slate-400"}>
-                                {item.productName || "-- Search by Name or Barcode --"}
-                              </span>
-                              <ChevronDown className={`h-4 w-4 text-slate-500 transition-transform ${activeDropdownIndex === index ? 'rotate-180' : ''}`} />
+                              <span className={item.productName ? "text-slate-900" : "text-slate-400"}>{item.productName || "-- Search by Name or Barcode --"}</span>
+                              <ChevronDown className={`h-4 w-4 text-slate-500 transition-transform ${activeDropdownIndex === index ? "rotate-180" : ""}`} />
                             </div>
-                            
+
                             {activeDropdownIndex === index && (
                               <div className="absolute top-full left-0 w-full mt-1 bg-white border border-slate-200 rounded-lg shadow-2xl z-50 overflow-hidden animate-in zoom-in-95">
                                 <div className="p-2 bg-slate-50 border-b border-slate-100 sticky top-0">
                                   <div className="relative">
                                     <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-                                    <Input 
-                                      placeholder="Scan Barcode or Type Name..." 
+                                    <Input
+                                      placeholder="Scan Barcode or Type Name..."
                                       className="pl-8 h-10 text-sm font-semibold focus-visible:ring-indigo-500 border-slate-300"
                                       value={productSearch}
                                       onChange={(e) => setProductSearch(e.target.value)}
@@ -393,10 +440,13 @@ export default function PurchasesPage() {
                                 </div>
                                 <div className="max-h-[220px] overflow-y-auto custom-scrollbar">
                                   {filteredProducts.length > 0 ? (
-                                    filteredProducts.map(p => (
-                                      <div 
-                                        key={p.id} 
-                                        onClick={() => { updateItem(index, "productId", p.id); setActiveDropdownIndex(null); }}
+                                    filteredProducts.map((p) => (
+                                      <div
+                                        key={p.id}
+                                        onClick={() => {
+                                          updateItem(index, "productId", p.id);
+                                          setActiveDropdownIndex(null);
+                                        }}
                                         className="px-3 py-3 text-sm font-bold text-slate-700 hover:bg-indigo-50 hover:text-indigo-700 cursor-pointer flex items-center justify-between border-b border-slate-50 last:border-0"
                                       >
                                         <div className="flex flex-col">
@@ -404,15 +454,15 @@ export default function PurchasesPage() {
                                           <span className="text-[10px] text-slate-400 font-mono mt-0.5">{p.master_barcode ? `B/C: ${p.master_barcode}` : "No Barcode"}</span>
                                         </div>
                                         <div className="flex items-center gap-2">
-                                          <Badge variant="outline" className="bg-white">Stock: {p.opening_stock}</Badge>
+                                          <Badge variant="outline" className="bg-white">
+                                            Stock: {p.opening_stock}
+                                          </Badge>
                                           {item.productId === p.id && <Check className="h-4 w-4 text-indigo-600" />}
                                         </div>
                                       </div>
                                     ))
                                   ) : (
-                                    <div className="px-3 py-6 text-center text-xs font-bold text-slate-400">
-                                      No product match found.
-                                    </div>
+                                    <div className="px-3 py-6 text-center text-xs font-bold text-slate-400">No product match found.</div>
                                   )}
                                 </div>
                               </div>
@@ -422,18 +472,20 @@ export default function PurchasesPage() {
                           <div className="md:col-span-3 space-y-1">
                             <Label className="font-bold text-slate-700 text-xs uppercase tracking-wider">Cost / Unit (Rs)</Label>
                             <Input
-                              type="number" min="0"
+                              type="number"
+                              min="0"
                               className="h-11 border-slate-300 bg-white font-black text-slate-900 shadow-inner focus-visible:ring-indigo-500"
                               value={item.costPrice}
                               onChange={(e) => updateItem(index, "costPrice", e.target.value)}
                               required
                             />
                           </div>
-                          
+
                           <div className="md:col-span-2 space-y-1">
                             <Label className="font-bold text-slate-700 text-xs uppercase tracking-wider">Quantity</Label>
                             <Input
-                              type="number" min="1"
+                              type="number"
+                              min="1"
                               className="h-11 border-slate-300 bg-white font-black text-center text-slate-900 shadow-inner focus-visible:ring-indigo-500"
                               value={item.quantity}
                               disabled={item.serialNumbers.length > 0}
@@ -471,16 +523,9 @@ export default function PurchasesPage() {
                                 <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">Qty Locked</span>
                               </div>
                               {item.serialNumbers.map((serial) => (
-                                <span
-                                  key={serial}
-                                  className="inline-flex items-center gap-1.5 rounded-md bg-white border border-slate-300 text-slate-800 shadow-sm px-2.5 py-1 text-[11px] font-mono font-bold transition-all hover:border-indigo-400"
-                                >
+                                <span key={serial} className="inline-flex items-center gap-1.5 rounded-md bg-white border border-slate-300 text-slate-800 shadow-sm px-2.5 py-1 text-[11px] font-mono font-bold transition-all hover:border-indigo-400">
                                   {serial}
-                                  <button
-                                    type="button"
-                                    onClick={() => removeSerial(index, serial)}
-                                    className="hover:text-rose-600 hover:bg-rose-50 rounded-full p-0.5 transition-colors"
-                                  >
+                                  <button type="button" onClick={() => removeSerial(index, serial)} className="hover:text-rose-600 hover:bg-rose-50 rounded-full p-0.5 transition-colors">
                                     <X className="h-3 w-3" />
                                   </button>
                                 </span>
@@ -496,7 +541,9 @@ export default function PurchasesPage() {
                         <Package className="h-12 w-12 text-slate-300" />
                         <div>
                           <p className="font-bold text-slate-600 text-lg">No Items Added Yet</p>
-                          <p className="text-xs text-slate-400 mt-1">Press <kbd className="bg-slate-200 px-1 py-0.5 rounded font-mono text-slate-700">F8</kbd> or click "Add Next Item" to start logging inward stock.</p>
+                          <p className="text-xs text-slate-400 mt-1">
+                            Press <kbd className="bg-slate-200 px-1 py-0.5 rounded font-mono text-slate-700">F8</kbd> or click "Add Next Item" to start logging inward stock.
+                          </p>
                         </div>
                       </div>
                     )}
@@ -504,17 +551,20 @@ export default function PurchasesPage() {
                 </div>
 
                 {/* Sidebar (Supplier & Payment) */}
-                <div className="lg:col-span-1 space-y-6">
-                  
+                <div className="md:col-span-1 space-y-6">
                   {/* Supplier Card */}
                   <Card className="bg-white border-slate-200 shadow-xl relative overflow-hidden">
-                    <div className="absolute top-0 right-0 p-2 opacity-5"><Factory className="h-24 w-24"/></div>
+                    <div className="absolute top-0 right-0 p-2 opacity-5">
+                      <Factory className="h-24 w-24" />
+                    </div>
                     <CardHeader className="border-b bg-slate-50 pb-4 relative z-10">
                       <CardTitle className="text-sm font-extrabold uppercase tracking-widest text-slate-700">Supplier Ledger</CardTitle>
                     </CardHeader>
                     <CardContent className="p-4 space-y-4 relative z-10">
                       <div className="space-y-1.5">
-                        <Label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Select Vendor <span className="text-rose-500">*</span></Label>
+                        <Label className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+                          Select Vendor <span className="text-rose-500">*</span>
+                        </Label>
                         <select
                           className="flex h-11 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-bold shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
                           value={supplierId}
@@ -523,11 +573,13 @@ export default function PurchasesPage() {
                         >
                           <option value="">-- Choose Vendor --</option>
                           {suppliers.map((s) => (
-                            <option key={s.id} value={s.id}>{s.name} {s.company ? `(${s.company})` : ""}</option>
+                            <option key={s.id} value={s.id}>
+                              {s.name} {s.company ? `(${s.company})` : ""}
+                            </option>
                           ))}
                         </select>
                       </div>
-                      
+
                       {!isQuickSupplierOpen ? (
                         <Button type="button" variant="outline" className="w-full text-indigo-600 border-indigo-200 bg-indigo-50 hover:bg-indigo-100 font-bold text-xs shadow-sm h-9" onClick={() => setIsQuickSupplierOpen(true)}>
                           <Plus className="h-3.5 w-3.5 mr-1" /> Quick Create New Vendor
@@ -535,11 +587,13 @@ export default function PurchasesPage() {
                       ) : (
                         <div className="bg-indigo-50 p-3 rounded-lg border border-indigo-200 space-y-3 animate-in fade-in zoom-in-95">
                           <Label className="text-[10px] font-black uppercase text-indigo-800">New Vendor Form</Label>
-                          <Input className="h-9 text-xs font-semibold" placeholder="Vendor Name *" value={newSupplier.name} onChange={e => setNewSupplier({...newSupplier, name: e.target.value})} autoFocus />
-                          <Input className="h-9 text-xs font-semibold" placeholder="Company (Optional)" value={newSupplier.company} onChange={e => setNewSupplier({...newSupplier, company: e.target.value})} />
-                          <Input className="h-9 text-xs font-semibold" placeholder="Phone (Optional)" value={newSupplier.phone} onChange={e => setNewSupplier({...newSupplier, phone: e.target.value})} />
+                          <Input className="h-9 text-xs font-semibold" placeholder="Vendor Name *" value={newSupplier.name} onChange={(e) => setNewSupplier({ ...newSupplier, name: e.target.value })} autoFocus />
+                          <Input className="h-9 text-xs font-semibold" placeholder="Company (Optional)" value={newSupplier.company} onChange={(e) => setNewSupplier({ ...newSupplier, company: e.target.value })} />
+                          <Input className="h-9 text-xs font-semibold" placeholder="Phone (Optional)" value={newSupplier.phone} onChange={(e) => setNewSupplier({ ...newSupplier, phone: e.target.value })} />
                           <div className="flex gap-2">
-                            <Button type="button" variant="ghost" className="h-8 flex-1 text-[10px] hover:bg-indigo-100" onClick={() => setIsQuickSupplierOpen(false)}>Cancel</Button>
+                            <Button type="button" variant="ghost" className="h-8 flex-1 text-[10px] hover:bg-indigo-100" onClick={() => setIsQuickSupplierOpen(false)}>
+                              Cancel
+                            </Button>
                             <Button type="button" className="h-8 flex-1 text-[10px] bg-indigo-600 hover:bg-indigo-700" onClick={handleQuickAddSupplier} disabled={isSavingSupplier || !newSupplier.name}>
                               {isSavingSupplier ? <Loader2 className="h-3 w-3 animate-spin" /> : "Save"}
                             </Button>
@@ -565,13 +619,15 @@ export default function PurchasesPage() {
                       <div className="space-y-1.5">
                         <Label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Amount Paid (Rs)</Label>
                         <Input
-                          type="number" min="0" max={totalAmount}
+                          type="number"
+                          min="0"
+                          max={totalAmount}
                           className="h-12 border-slate-700 bg-slate-800 font-black text-xl text-white shadow-inner focus-visible:ring-emerald-500"
                           value={amountPaid}
                           onChange={(e) => setAmountPaid(e.target.value)}
                         />
                       </div>
-                      
+
                       <div className="space-y-1.5">
                         <Label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Payment Mode</Label>
                         <select
@@ -580,7 +636,9 @@ export default function PurchasesPage() {
                           onChange={(e) => setPaymentMethod(e.target.value)}
                         >
                           {PAYMENT_METHODS.map((m) => (
-                            <option key={m} value={m}>{m.replace("_", " ")}</option>
+                            <option key={m} value={m}>
+                              {m.replace("_", " ")}
+                            </option>
                           ))}
                         </select>
                       </div>
@@ -588,12 +646,12 @@ export default function PurchasesPage() {
                       <div className="pt-4 border-t border-slate-800">
                         <div className="flex justify-between items-center">
                           <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Debt / Udhaar</span>
-                          <span className={`text-lg font-black ${balanceAmount > 0 ? "text-rose-400" : "text-emerald-400"}`}>
-                            Rs. {balanceAmount.toLocaleString()}
-                          </span>
+                          <span className={`text-lg font-black ${balanceAmount > 0 ? "text-rose-400" : "text-emerald-400"}`}>Rs. {balanceAmount.toLocaleString()}</span>
                         </div>
                         <div className="flex justify-end mt-2">
-                           <Badge variant="outline" className={`border-2 ${statusBadgeClass(derivedPaymentStatus)} bg-transparent`}>{derivedPaymentStatus}</Badge>
+                          <Badge variant="outline" className={`border-2 ${statusBadgeClass(derivedPaymentStatus)} bg-transparent`}>
+                            {derivedPaymentStatus}
+                          </Badge>
                         </div>
                       </div>
                     </CardContent>
@@ -604,7 +662,6 @@ export default function PurchasesPage() {
                     COMMIT STOCK <span className="text-[10px] ml-1 bg-emerald-800 px-2 py-0.5 rounded opacity-80">[F2]</span>
                   </Button>
                 </div>
-
               </div>
             </form>
           </DialogContent>
@@ -655,15 +712,11 @@ export default function PurchasesPage() {
                       <TableCell className="font-medium text-slate-600">{new Date(p.created_at).toLocaleString("ur-PK", { dateStyle: "short", timeStyle: "short" })}</TableCell>
                       <TableCell className="text-right font-black text-indigo-700 text-lg">Rs. {total.toLocaleString()}</TableCell>
                       <TableCell className="text-right font-semibold text-slate-700">Rs. {paid.toLocaleString()}</TableCell>
-                      <TableCell className="text-right">
-                        {balance > 0 ? (
-                          <span className="font-bold text-rose-600">Rs. {balance.toLocaleString()}</span>
-                        ) : (
-                          <span className="text-slate-300">-</span>
-                        )}
-                      </TableCell>
+                      <TableCell className="text-right">{balance > 0 ? <span className="font-bold text-rose-600">Rs. {balance.toLocaleString()}</span> : <span className="text-slate-300">-</span>}</TableCell>
                       <TableCell className="text-center">
-                        <Badge variant="outline" className={statusBadgeClass(p.payment_status)}>{p.payment_status}</Badge>
+                        <Badge variant="outline" className={statusBadgeClass(p.payment_status)}>
+                          {p.payment_status}
+                        </Badge>
                       </TableCell>
                       <TableCell className="text-center">
                         <Button variant="ghost" size="sm" className="h-8 bg-slate-100 hover:bg-indigo-100 hover:text-indigo-700 border border-slate-200" onClick={() => setViewInvoice(p)}>
@@ -679,7 +732,7 @@ export default function PurchasesPage() {
         </CardContent>
       </Card>
 
-      {/* ── DIALOG: View Invoice Details ── */}
+      {/* DIALOG: View Invoice Details */}
       <Dialog open={!!viewInvoice} onOpenChange={(open) => !open && setViewInvoice(null)}>
         <DialogContent className="max-w-3xl p-0 overflow-hidden bg-slate-50">
           {viewInvoice && (
@@ -691,8 +744,7 @@ export default function PurchasesPage() {
                 <Badge className={statusBadgeClass(viewInvoice.payment_status)}>{viewInvoice.payment_status}</Badge>
               </div>
               <div className="p-6 space-y-6 max-h-[75vh] overflow-y-auto custom-scrollbar">
-                
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
                     <Label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Vendor Details</Label>
                     <p className="font-black text-lg text-slate-800">{viewInvoice.supplier?.name}</p>
@@ -730,21 +782,19 @@ export default function PurchasesPage() {
                               {item.quantity} Units × Rs. {Number(item.cost_price).toLocaleString()}
                             </p>
                           </div>
-                          <p className="font-black text-indigo-700">
-                            Rs. {(item.quantity * Number(item.cost_price)).toLocaleString()}
-                          </p>
+                          <p className="font-black text-indigo-700">Rs. {(item.quantity * Number(item.cost_price)).toLocaleString()}</p>
                         </div>
-                        
+
                         {item.purchase_serials && item.purchase_serials.length > 0 && (
                           <div className="mt-2 bg-slate-50 p-2 rounded border border-slate-200">
-                             <p className="text-[10px] font-bold text-slate-400 uppercase mb-1.5">Registered Hardware Serials</p>
-                             <div className="flex flex-wrap gap-1.5">
-                               {item.purchase_serials.map((serialObj: any) => (
-                                 <span key={serialObj.serial_number} className="inline-flex items-center rounded-md bg-white border border-slate-300 text-slate-800 shadow-sm px-2 py-0.5 text-[10px] font-mono font-bold">
-                                   {serialObj.serial_number}
-                                 </span>
-                               ))}
-                             </div>
+                            <p className="text-[10px] font-bold text-slate-400 uppercase mb-1.5">Registered Hardware Serials</p>
+                            <div className="flex flex-wrap gap-1.5">
+                              {item.purchase_serials.map((serialObj: any) => (
+                                <span key={serialObj.serial_number} className="inline-flex items-center rounded-md bg-white border border-slate-300 text-slate-800 shadow-sm px-2 py-0.5 text-[10px] font-mono font-bold">
+                                  {serialObj.serial_number}
+                                </span>
+                              ))}
+                            </div>
                           </div>
                         )}
                       </div>
@@ -753,19 +803,25 @@ export default function PurchasesPage() {
                 </div>
               </div>
               <div className="bg-white border-t border-slate-200 px-6 py-4 flex justify-end">
-                <Button className="font-bold bg-slate-800 hover:bg-slate-900 shadow-md" onClick={() => setViewInvoice(null)}>Close Viewer</Button>
+                <Button className="font-bold bg-slate-800 hover:bg-slate-900 shadow-md" onClick={() => setViewInvoice(null)}>
+                  Close Viewer
+                </Button>
               </div>
             </>
           )}
         </DialogContent>
       </Dialog>
-      
-      <style dangerouslySetInnerHTML={{__html: `
+
+      <style
+        dangerouslySetInnerHTML={{
+          __html: `
         .custom-scrollbar::-webkit-scrollbar { width: 6px; }
         .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
         .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
         .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
-      `}} />
+      `,
+        }}
+      />
     </div>
   );
 }
