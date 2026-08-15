@@ -357,20 +357,16 @@ export default function POSPage() {
     const trimmedName = customerInfo.name.trim();
     const trimmedPhone = customerInfo.phone.trim();
 
-    if (trimmedName && trimmedName !== "Walk-in Customer" && !trimmedPhone) {
-      setCheckoutError("Customer phone number is mandatory for account creation to prevent duplicates.");
-      return;
-    }
-
     try {
       setIsSaving(true);
 
       let customerId: string | undefined = undefined;
-      if (trimmedName && trimmedName !== "Walk-in Customer" && trimmedPhone) {
+      // Fixed Bug: Phone validation removed for flexible account creation
+      if (trimmedName && trimmedName !== "Walk-in Customer") {
         const custRes = await fetch(`${API_URL}/customers/find-or-create`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ name: trimmedName, phone: trimmedPhone }),
+          body: JSON.stringify({ name: trimmedName, phone: trimmedPhone || undefined }),
         });
         if (custRes.ok) {
           const custData = await custRes.json();
@@ -393,8 +389,11 @@ export default function POSPage() {
         paymentMethod: paymentMethod,
         paymentStatus,
         customerId,
+        // Fixed Bug: Sending productName explicitly to backend to avoid validation errors
         items: cart.map((item) => ({
           productId: item.productId,
+          productName: item.name,
+          name: item.name,
           quantity: item.quantity,
           salePrice: item.salePrice,
           serialNumbers: item.serialNumbers,
@@ -873,7 +872,7 @@ export default function POSPage() {
                  </div>
                  <div className="space-y-1.5 col-span-2 sm:col-span-1">
                    <Label htmlFor="customerPhone" className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
-                     Phone Number <span className="text-rose-500">*</span>
+                     Phone Number <span className="text-slate-400 normal-case font-normal">(Optional)</span>
                    </Label>
                    <div className="relative">
                      <Phone className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
@@ -887,7 +886,7 @@ export default function POSPage() {
                    </div>
                  </div>
                  <p className="text-[10px] font-medium text-slate-400 col-span-2 leading-tight">
-                   * Phone is required to prevent duplicate ledger entries. Leave Name as "Walk-in" for random sales.
+                   * Enter phone to record exact ledger. Leave empty for quick walk-in sales.
                  </p>
               </div>
             </div>

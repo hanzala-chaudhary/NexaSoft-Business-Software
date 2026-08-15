@@ -6,9 +6,9 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
-import { Plus, ShoppingCart, Loader2, ListPlus, ScanLine, X, AlertCircle, CheckCircle2, Factory, Search, FileText, ChevronDown, Check, Eye, Package, Wallet } from "lucide-react";
+import { Plus, Loader2, ListPlus, ScanLine, X, AlertCircle, CheckCircle2, Factory, Search, FileText, ChevronDown, Check, Eye, Package, Wallet } from "lucide-react";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "https://nexasoft-business-software-production.up.railway.app/api";
 
@@ -108,18 +108,12 @@ export default function PurchasesPage() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  // FIX: addItemRow now uses the functional setState form, so it never
-  // depends on a stale `items` snapshot — safe to call from anywhere,
-  // including keyboard shortcuts, without losing previously added rows.
   const addItemRow = useCallback(() => {
     setItems((prev) => [emptyItem(), ...prev]);
     showToast('New Item row added. (Tip: Use F8 to quickly add rows)', "info");
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Pro Shortcuts — F2 save, F8 add row.
-  // Ignored while typing inside inputs/selects/textareas EXCEPT F8 add-row,
-  // so scanning/typing serials or product search doesn't get interrupted by F2.
   useEffect(() => {
     if (!isDialogOpen) return;
 
@@ -196,8 +190,6 @@ export default function PurchasesPage() {
         quantity: currentSerials.size,
       };
 
-      // Toasts fired after state update (outside setState updater ideally,
-      // but kept simple here since counts are local to this closure)
       setTimeout(() => {
         if (addedCount > 0) showToast(`${addedCount} Serial(s) secured in batch.`, "success");
         if (duplicateCount > 0) showToast(`${duplicateCount} Duplicate Serial(s) ignored!`, "error");
@@ -260,12 +252,10 @@ export default function PurchasesPage() {
   const balanceAmount = Math.max(0, totalAmount - paidNum);
   const derivedPaymentStatus = totalAmount > 0 && paidNum >= totalAmount ? "PAID" : paidNum > 0 ? "PARTIAL" : "PENDING";
 
-  // Cap amountPaid whenever EITHER value changes (previously only fired on totalAmount change)
   useEffect(() => {
     if (totalAmount > 0 && Number(amountPaid) > totalAmount) {
       setAmountPaid(String(totalAmount));
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [totalAmount, amountPaid]);
 
   const resetForm = () => {
@@ -329,7 +319,6 @@ export default function PurchasesPage() {
     return "bg-rose-100 text-rose-800 border-rose-300 font-bold";
   };
 
-  // Search filter for custom dropdown
   const filteredProducts = products.filter(
     (p) =>
       p.name.toLowerCase().includes(productSearch.toLowerCase()) ||
@@ -343,6 +332,7 @@ export default function PurchasesPage() {
         <div className={`flex items-center gap-3 px-5 py-4 rounded-xl shadow-2xl border-l-4 ${toast.type === "error" ? "bg-rose-900 border-rose-500 text-white" : toast.type === "info" ? "bg-indigo-900 border-indigo-500 text-white" : "bg-emerald-900 border-emerald-500 text-white"}`}>
           {toast.type === "error" ? <AlertCircle className="h-5 w-5" /> : toast.type === "info" ? <ListPlus className="h-5 w-5" /> : <CheckCircle2 className="h-5 w-5" />}
           <p className="font-semibold text-sm">{toast.msg}</p>
+          <button onClick={() => setToast({ ...toast, show: false })} className="ml-4 opacity-50 hover:opacity-100"><X className="h-4 w-4" /></button>
         </div>
       </div>
 
@@ -371,7 +361,7 @@ export default function PurchasesPage() {
               <Plus className="h-5 w-5" /> Execute New Purchase
             </Button>
           </DialogTrigger>
-          <DialogContent className="sm:max-w-6xl max-h-[95vh] overflow-y-auto bg-slate-50 p-0 border-0 shadow-2xl">
+          <DialogContent className="sm:max-w-[95vw] lg:max-w-6xl max-h-[95vh] overflow-y-auto bg-slate-50 p-0 border-0 shadow-2xl">
             <form onSubmit={handleSavePurchase} className="flex flex-col h-full">
               <div className="bg-slate-900 px-6 py-5 text-white flex justify-between items-center sticky top-0 z-20">
                 <div>
@@ -382,13 +372,16 @@ export default function PurchasesPage() {
                     System verifies duplicate serials instantly. Press <kbd className="bg-slate-700 px-1 py-0.5 rounded">F2</kbd> to save or <kbd className="bg-slate-700 px-1 py-0.5 rounded">F8</kbd> to add item block.
                   </p>
                 </div>
+                <Button type="button" variant="ghost" className="text-slate-400 hover:text-white rounded-full p-2 h-auto" onClick={() => setIsDialogOpen(false)}>
+                  <X className="h-6 w-6" />
+                </Button>
               </div>
 
-              {/* CHANGED: breakpoint moved from lg -> md so the sidebar stacks
-                  earlier on narrower/tablet widths instead of squishing */}
-              <div className="p-6 grid grid-cols-1 md:grid-cols-4 gap-6">
+              {/* FLEXBOX RESPONSIVE ENGINE INSTEAD OF GRID */}
+              <div className="p-4 sm:p-6 flex flex-col xl:flex-row gap-6">
+                
                 {/* Main Content Area (Items) */}
-                <div className="md:col-span-3 space-y-6">
+                <div className="flex-1 min-w-0 space-y-6">
                   {formError && (
                     <div className="rounded-lg bg-rose-50 border border-rose-200 px-4 py-3 text-sm text-rose-800 font-bold flex items-center gap-2 shadow-sm">
                       <AlertCircle className="h-5 w-5 text-rose-600" /> {formError}
@@ -406,10 +399,11 @@ export default function PurchasesPage() {
 
                   <div className="space-y-4">
                     {items.map((item, index) => (
-                      <Card key={index} className="p-0 bg-white border-slate-200 shadow-sm overflow-hidden animate-in fade-in slide-in-from-bottom-4">
-                        <div className="p-4 grid grid-cols-1 md:grid-cols-12 gap-4 bg-slate-50 border-b border-slate-100">
+                      <div key={index} className="rounded-xl border border-slate-200 bg-white shadow-sm animate-in fade-in slide-in-from-bottom-4 relative">
+                        <div className="p-4 grid grid-cols-1 sm:grid-cols-12 gap-4 bg-slate-50 border-b border-slate-100 rounded-t-xl">
+                          
                           {/* DYNAMIC SEARCHABLE PRODUCT DROPDOWN */}
-                          <div className="md:col-span-6 space-y-1 relative" ref={activeDropdownIndex === index ? dropdownRef : null}>
+                          <div className="sm:col-span-6 space-y-1 relative" ref={activeDropdownIndex === index ? dropdownRef : null}>
                             <Label className="font-bold text-slate-700 text-xs uppercase tracking-wider">
                               Select Product <span className="text-rose-500">*</span>
                             </Label>
@@ -469,7 +463,7 @@ export default function PurchasesPage() {
                             )}
                           </div>
 
-                          <div className="md:col-span-3 space-y-1">
+                          <div className="sm:col-span-3 space-y-1">
                             <Label className="font-bold text-slate-700 text-xs uppercase tracking-wider">Cost / Unit (Rs)</Label>
                             <Input
                               type="number"
@@ -481,7 +475,7 @@ export default function PurchasesPage() {
                             />
                           </div>
 
-                          <div className="md:col-span-2 space-y-1">
+                          <div className="sm:col-span-2 space-y-1">
                             <Label className="font-bold text-slate-700 text-xs uppercase tracking-wider">Quantity</Label>
                             <Input
                               type="number"
@@ -494,7 +488,7 @@ export default function PurchasesPage() {
                             />
                           </div>
 
-                          <div className="md:col-span-1 flex items-end justify-end pb-1">
+                          <div className="sm:col-span-1 flex items-end justify-end pb-1">
                             <Button type="button" variant="ghost" size="icon" className="h-10 w-10 text-rose-500 hover:bg-rose-100 rounded-lg" onClick={() => removeItem(index)} title="Remove Row">
                               <X className="h-5 w-5" />
                             </Button>
@@ -502,7 +496,7 @@ export default function PurchasesPage() {
                         </div>
 
                         {/* Scan Input Section */}
-                        <div className="p-4 bg-white">
+                        <div className="p-4 bg-white rounded-b-xl">
                           <Label className="text-xs font-extrabold text-indigo-700 uppercase tracking-wider flex items-center gap-2 mb-2">
                             <ScanLine className="h-4 w-4" /> Hardware Serial Input Engine
                           </Label>
@@ -533,16 +527,16 @@ export default function PurchasesPage() {
                             </div>
                           )}
                         </div>
-                      </Card>
+                      </div>
                     ))}
 
                     {items.length === 0 && (
-                      <div className="text-center py-12 border-2 border-dashed border-slate-300 rounded-xl bg-slate-50 flex flex-col items-center gap-3">
-                        <Package className="h-12 w-12 text-slate-300" />
+                      <div className="text-center py-16 border-2 border-dashed border-slate-300 rounded-xl bg-slate-50/50 flex flex-col items-center gap-3">
+                        <Package className="h-14 w-14 text-slate-300" />
                         <div>
-                          <p className="font-bold text-slate-600 text-lg">No Items Added Yet</p>
-                          <p className="text-xs text-slate-400 mt-1">
-                            Press <kbd className="bg-slate-200 px-1 py-0.5 rounded font-mono text-slate-700">F8</kbd> or click "Add Next Item" to start logging inward stock.
+                          <p className="font-extrabold text-slate-600 text-lg">No Items Added Yet</p>
+                          <p className="text-xs text-slate-500 mt-1.5 font-medium">
+                            Press <kbd className="bg-slate-200 border border-slate-300 px-1.5 py-0.5 rounded font-mono text-slate-700 shadow-sm">F8</kbd> or click "Add Next Item" to start logging inward stock.
                           </p>
                         </div>
                       </div>
@@ -550,8 +544,8 @@ export default function PurchasesPage() {
                   </div>
                 </div>
 
-                {/* Sidebar (Supplier & Payment) */}
-                <div className="md:col-span-1 space-y-6">
+                {/* Sidebar (Supplier & Payment) Fixed Width */}
+                <div className="w-full xl:w-[380px] shrink-0 space-y-6">
                   {/* Supplier Card */}
                   <Card className="bg-white border-slate-200 shadow-xl relative overflow-hidden">
                     <div className="absolute top-0 right-0 p-2 opacity-5">
@@ -659,7 +653,7 @@ export default function PurchasesPage() {
 
                   <Button id="btn-save-purchase" type="submit" className="w-full bg-emerald-600 hover:bg-emerald-700 h-14 text-lg font-black shadow-xl hover:shadow-2xl transition-transform hover:-translate-y-1 gap-2" disabled={isSaving || items.length === 0}>
                     {isSaving ? <Loader2 className="h-6 w-6 animate-spin" /> : <CheckCircle2 className="h-6 w-6" />}
-                    COMMIT STOCK <span className="text-[10px] ml-1 bg-emerald-800 px-2 py-0.5 rounded opacity-80">[F2]</span>
+                    COMMIT STOCK <span className="text-[10px] ml-1 bg-emerald-800 px-2 py-0.5 rounded opacity-80 border border-emerald-500">[F2]</span>
                   </Button>
                 </div>
               </div>
@@ -670,7 +664,7 @@ export default function PurchasesPage() {
 
       <Card className="shadow-lg border-slate-200">
         <CardContent className="p-0 overflow-x-auto">
-          <Table className="min-w-[900px]">
+          <Table className="min-w-[950px]">
             <TableHeader className="bg-slate-100">
               <TableRow>
                 <TableHead className="font-bold text-slate-700">Invoice #</TableHead>
@@ -815,7 +809,7 @@ export default function PurchasesPage() {
       <style
         dangerouslySetInnerHTML={{
           __html: `
-        .custom-scrollbar::-webkit-scrollbar { width: 6px; }
+        .custom-scrollbar::-webkit-scrollbar { width: 6px; height: 6px; }
         .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
         .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
         .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
