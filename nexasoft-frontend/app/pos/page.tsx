@@ -83,10 +83,6 @@ export default function POSPage() {
   // ─── KEYBOARD SHORTCUTS (PRO FEATURE) ─────────────────────────────────────
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Avoid triggering if user is typing in a dialog input (unless it's Enter for Receipt)
-      const activeTag = document.activeElement?.tagName.toLowerCase();
-      const isInputFocused = activeTag === "input" || activeTag === "textarea";
-
       if (e.key === "F2") {
         e.preventDefault();
         if (cart.length > 0 && !isCheckoutOpen && !isReceiptOpen && !isCustomItemOpen) {
@@ -106,6 +102,7 @@ export default function POSPage() {
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cart, isCheckoutOpen, isReceiptOpen, isCustomItemOpen, lastInvoice]);
 
   // ─── DATA FETCHING ────────────────────────────────────────────────────────
@@ -162,31 +159,36 @@ export default function POSPage() {
       return;
     }
 
+    // Warn immediately if the product itself has no valid sale price set up
+    if (!Number(product.salePrice) || Number(product.salePrice) <= 0) {
+      showToast(`"${product.name}" has no sale price set. Please set a price in the cart before checkout.`, "info");
+    }
+
     if (existing) {
-      setCart(cart.map((item) =>
+      setCart((prev) => prev.map((item) =>
         item.productId === product.id ? { ...item, quantity: item.quantity + 1 } : item
       ));
     } else {
-      setCart([...cart, {
+      setCart((prev) => [...prev, {
         productId: product.id,
         name: product.name,
-        salePrice: Number(product.salePrice),
+        salePrice: Number(product.salePrice) || 0,
         quantity: 1,
         serialNumbers: [],
       }]);
     }
-    
+
     if (!isSilent) showToast(`Added ${product.name} to bill`, "success");
   };
 
   const updateCartPrice = (productId: string, newPrice: number) => {
-    setCart(cart.map((item) =>
+    setCart((prev) => prev.map((item) =>
       item.productId === productId ? { ...item, salePrice: newPrice } : item
     ));
   };
 
   const updateCartQuantity = (productId: string, delta: number) => {
-    setCart(cart.map((item) => {
+    setCart((prev) => prev.map((item) => {
       if (item.productId === productId && item.serialNumbers.length === 0) {
         const newQ = item.quantity + delta;
         return newQ > 0 ? { ...item, quantity: newQ } : item;
@@ -196,27 +198,33 @@ export default function POSPage() {
   };
 
   const removeFromCart = (productId: string) => {
-    setCart(cart.filter((item) => item.productId !== productId));
+    setCart((prev) => prev.filter((item) => item.productId !== productId));
   };
 
   const removeSerialFromCart = (productId: string, serial: string) => {
-    const item = cart.find((i) => i.productId === productId);
-    if (!item) return;
-    const newSerials = item.serialNumbers.filter((s) => s !== serial);
-    if (newSerials.length === 0) {
-      removeFromCart(productId);
-    } else {
-      setCart(cart.map((i) =>
+    setCart((prev) => {
+      const item = prev.find((i) => i.productId === productId);
+      if (!item) return prev;
+      const newSerials = item.serialNumbers.filter((s) => s !== serial);
+      if (newSerials.length === 0) {
+        return prev.filter((i) => i.productId !== productId);
+      }
+      return prev.map((i) =>
         i.productId === productId
           ? { ...i, serialNumbers: newSerials, quantity: newSerials.length }
           : i
-      ));
-    }
+      );
+    });
   };
 
   const subTotalAmount = cart.reduce((sum, item) => sum + item.salePrice * item.quantity, 0);
   const grandTotal = subTotalAmount - discount;
   const balanceAmount = grandTotal - (Number(paidAmount) || 0);
+
+  // Items with an invalid (missing/zero/negative) sale price — checked live
+  // so the cart UI and the checkout button can both react to it instantly.
+  const invalidPriceItems = cart.filter((item) => !item.salePrice || Number(item.salePrice) <= 0);
+  const hasInvalidPriceItems = invalidPriceItems.length > 0;
 
   // ─── CUSTOM ON-THE-FLY ITEM LOGIC ─────────────────────────────────────────
   const handleAddCustomItem = async (e: React.FormEvent) => {
@@ -251,12 +259,12 @@ export default function POSPage() {
       newProd.is_custom_allowed = true;
 
       addToCart(newProd, true);
-      setProducts([...products, newProd]); // update local cache
-      
+      setProducts((prev) => [...prev, newProd]); // update local cache
+
       setIsCustomItemOpen(false);
       setCustomItem({ name: "", price: "", cost: "0" });
       showToast("Custom Item added to bill successfully!", "success");
-      
+
       // Refocus search bar automatically
       setTimeout(() => searchInputRef.current?.focus(), 100);
     } catch (error: any) {
@@ -290,10 +298,10 @@ export default function POSPage() {
 
       const matched = products.find((p) => p.master_barcode === code || p.sku === code);
       if (matched) {
-         addToCart(matched, true);
-         showToast(`Barcode Scanned: ${matched.name}`, "success");
+        addToCart(matched, true);
+        showToast(`Barcode Scanned: ${matched.name}`, "success");
       } else {
-         showToast(`No product found for barcode: ${code}`, "error");
+        showToast(`No product found for barcode: ${code}`, "error");
       }
     } catch (error) {
       console.error("Scanner error:", error);
@@ -318,13 +326,13 @@ export default function POSPage() {
     }
 
     if (existing) {
-      setCart(cart.map((item) =>
+      setCart((prev) => prev.map((item) =>
         item.productId === productId
           ? { ...item, quantity: item.serialNumbers.length + 1, serialNumbers: [...item.serialNumbers, serialData.serial_number] }
           : item
       ));
     } else {
-      setCart([...cart, {
+      setCart((prev) => [...prev, {
         productId,
         name: serialData.products?.name ?? "Unknown Product",
         salePrice: Number(serialData.products?.salePrice ?? 0),
@@ -347,22 +355,37 @@ export default function POSPage() {
   const handleDiscountChange = (val: number) => {
     const d = val >= 0 ? val : 0;
     setDiscount(d);
-    setPaidAmount(subTotalAmount - d); 
+    setPaidAmount(subTotalAmount - d);
   };
 
   const handleCheckout = async () => {
     if (cart.length === 0 || isSaving) return;
     setCheckoutError("");
 
+    // FIX: catch zero/missing-price items here, with the exact item name(s),
+    // instead of letting the backend reject the whole sale generically.
+    if (hasInvalidPriceItems) {
+      const names = invalidPriceItems.map((i) => `"${i.name}"`).join(", ");
+      setCheckoutError(`Please set a valid price (greater than 0) for: ${names}. Edit the Rate field in the cart.`);
+      return;
+    }
+
+    if (cart.some((item) => !item.name?.trim())) {
+      setCheckoutError("Every cart item needs a valid name. Please remove and re-add the affected item.");
+      return;
+    }
+
     const trimmedName = customerInfo.name.trim();
     const trimmedPhone = customerInfo.phone.trim();
+    const isNamedCustomer = trimmedName && trimmedName !== "Walk-in Customer";
 
     try {
       setIsSaving(true);
 
+      // Customer ledger is optional — created only when a name is given.
+      // Phone is optional too; find-or-create backend handles that.
       let customerId: string | undefined = undefined;
-      // Fixed Bug: Phone validation removed for flexible account creation
-      if (trimmedName && trimmedName !== "Walk-in Customer") {
+      if (isNamedCustomer) {
         const custRes = await fetch(`${API_URL}/customers/find-or-create`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -389,7 +412,8 @@ export default function POSPage() {
         paymentMethod: paymentMethod,
         paymentStatus,
         customerId,
-        // Fixed Bug: Sending productName explicitly to backend to avoid validation errors
+        customerName: trimmedName || "Walk-in Customer",
+        customerPhone: trimmedPhone || undefined,
         items: cart.map((item) => ({
           productId: item.productId,
           productName: item.name,
@@ -524,9 +548,9 @@ export default function POSPage() {
             ? `<div class="sub-row udhaar"><span style="font-weight:bold;">UDHAAR (BALANCE)</span><span style="font-weight:bold;">Rs. ${Number(bal).toLocaleString()}</span></div>`
             : `<div class="sub-row"><span>Change/Balance</span><span>Rs. 0</span></div>`
           }
-          
+
           <div class="thankyou">Shukriya! Meherbaani farma kar dobara tashreef layen.</div>
-          
+
           <div class="barcode-container">
              <img src="${barcodeUrl}" alt="Invoice Barcode" />
           </div>
@@ -564,12 +588,13 @@ export default function POSPage() {
         <div className={`flex items-center gap-3 px-6 py-3 rounded-full shadow-xl border ${toast.type === 'error' ? 'bg-rose-900 border-rose-500 text-white' : toast.type === 'info' ? 'bg-indigo-900 border-indigo-500 text-white' : 'bg-emerald-900 border-emerald-500 text-white'}`}>
           {toast.type === 'error' ? <AlertCircle className="h-5 w-5" /> : toast.type === 'info' ? <Zap className="h-5 w-5" /> : <CheckCircle2 className="h-5 w-5" />}
           <p className="font-bold text-sm tracking-wide">{toast.msg}</p>
+          <button onClick={() => setToast({ ...toast, show: false })} className="ml-4 opacity-50 hover:opacity-100"><X className="h-4 w-4" /></button>
         </div>
       </div>
 
       {/* ── LEFT: Product Grid & Search ── */}
       <div className="flex-1 flex flex-col gap-4 relative">
-        
+
         {/* Dynamic Action Bar */}
         <div className="flex items-center gap-3 bg-white p-3 rounded-xl shadow-sm border border-slate-200">
           <div className="relative flex-1">
@@ -597,8 +622,8 @@ export default function POSPage() {
             )}
           </div>
 
-          <Button 
-            onClick={() => setIsCustomItemOpen(true)} 
+          <Button
+            onClick={() => setIsCustomItemOpen(true)}
             className="h-14 px-6 gap-2 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white font-extrabold shadow-lg rounded-xl transition-transform hover:scale-105"
           >
             <Zap className="h-5 w-5 fill-white" />
@@ -634,7 +659,9 @@ export default function POSPage() {
                         {product.opening_stock} IN STOCK
                       </Badge>
                     </div>
-                    <p className="font-black text-indigo-700 text-lg mt-2">Rs. {Number(product.salePrice).toLocaleString()}</p>
+                    <p className={`font-black text-lg mt-2 ${Number(product.salePrice) > 0 ? "text-indigo-700" : "text-rose-500"}`}>
+                      {Number(product.salePrice) > 0 ? `Rs. ${Number(product.salePrice).toLocaleString()}` : "No price set"}
+                    </p>
                   </div>
                 </CardContent>
               </Card>
@@ -679,22 +706,33 @@ export default function POSPage() {
             </div>
           ) : (
             <div className="divide-y divide-slate-200">
-              {cart.map((item) => (
-                <div key={item.productId} className="p-4 flex flex-col gap-3 bg-white hover:bg-indigo-50/30 transition-colors">
+              {cart.map((item) => {
+                const priceInvalid = !item.salePrice || Number(item.salePrice) <= 0;
+                return (
+                <div key={item.productId} className={`p-4 flex flex-col gap-3 bg-white hover:bg-indigo-50/30 transition-colors ${priceInvalid ? "ring-1 ring-inset ring-rose-200 bg-rose-50/40" : ""}`}>
                   <div className="flex justify-between items-start gap-3">
                     <div className="flex-1 min-w-0">
                       <p className="font-extrabold text-slate-800 text-[13px] leading-tight line-clamp-2">{item.name}</p>
-                      
+
                       {/* Interactive Price Editor */}
-                      <div className="flex items-center gap-1.5 mt-2 bg-slate-50 w-fit px-2 py-1 rounded border border-slate-200 focus-within:border-indigo-500 focus-within:ring-1 focus-within:ring-indigo-500 transition-all">
-                        <span className="text-[10px] font-black text-slate-500 uppercase">Rate:</span>
+                      <div className={`flex items-center gap-1.5 mt-2 w-fit px-2 py-1 rounded border transition-all ${
+                        priceInvalid
+                          ? "bg-rose-50 border-rose-300 ring-1 ring-rose-200"
+                          : "bg-slate-50 border-slate-200 focus-within:border-indigo-500 focus-within:ring-1 focus-within:ring-indigo-500"
+                      }`}>
+                        <span className={`text-[10px] font-black uppercase ${priceInvalid ? "text-rose-600" : "text-slate-500"}`}>Rate:</span>
                         <Input
                           type="number"
                           value={item.salePrice}
                           onChange={(e) => updateCartPrice(item.productId, Number(e.target.value) || 0)}
-                          className="h-6 w-20 px-1 py-0 text-sm font-bold text-indigo-700 bg-transparent border-none focus-visible:ring-0 shadow-none"
+                          className={`h-6 w-20 px-1 py-0 text-sm font-bold bg-transparent border-none focus-visible:ring-0 shadow-none ${priceInvalid ? "text-rose-600" : "text-indigo-700"}`}
                         />
                       </div>
+                      {priceInvalid && (
+                        <p className="text-[10px] font-bold text-rose-600 mt-1 flex items-center gap-1">
+                          <AlertCircle className="h-3 w-3" /> Set a price before checkout
+                        </p>
+                      )}
                     </div>
 
                     {item.serialNumbers.length === 0 ? (
@@ -739,12 +777,18 @@ export default function POSPage() {
                     </div>
                   )}
                 </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </CardContent>
 
         <div className="bg-white border-t-2 border-slate-200 p-5 shadow-[0_-10px_15px_-3px_rgb(0,0,0,0.05)] z-10">
+          {hasInvalidPriceItems && (
+            <div className="flex items-center gap-2 mb-3 text-xs font-bold text-rose-700 bg-rose-50 border border-rose-200 rounded-lg px-3 py-2">
+              <AlertCircle className="h-4 w-4 shrink-0" /> {invalidPriceItems.length} item(s) need a price before you can checkout.
+            </div>
+          )}
           <div className="flex justify-between items-center mb-4">
             <span className="font-extrabold text-slate-500 uppercase tracking-wider text-sm">Sub Total Payable</span>
             <span className="font-black text-3xl text-indigo-700 tracking-tight">Rs. {subTotalAmount.toLocaleString()}</span>
@@ -779,7 +823,7 @@ export default function POSPage() {
                 <div className="grid grid-cols-2 gap-4">
                    <div className="space-y-2">
                       <Label className="font-bold text-slate-700 text-xs uppercase tracking-wider">Sale Price <span className="text-rose-500">*</span></Label>
-                      <Input required type="number" min="0" className="h-12 border-slate-300 font-black text-indigo-700 bg-indigo-50 shadow-sm focus-visible:ring-amber-500" placeholder="0" value={customItem.price} onChange={e => setCustomItem({...customItem, price: e.target.value})} />
+                      <Input required type="number" min="0.01" step="0.01" className="h-12 border-slate-300 font-black text-indigo-700 bg-indigo-50 shadow-sm focus-visible:ring-amber-500" placeholder="0" value={customItem.price} onChange={e => setCustomItem({...customItem, price: e.target.value})} />
                    </div>
                    <div className="space-y-2">
                       <Label className="font-bold text-slate-700 text-xs uppercase tracking-wider flex justify-between">Cost Price <span className="text-slate-400 font-normal lowercase">(Optional)</span></Label>
@@ -850,6 +894,13 @@ export default function POSPage() {
           </div>
 
           <div className="p-6 space-y-5">
+            {hasInvalidPriceItems && (
+              <div className="flex items-start gap-2 text-xs font-bold text-rose-700 bg-rose-50 border border-rose-300 rounded-lg px-3 py-2.5 shadow-sm">
+                <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
+                {invalidPriceItems.map((i) => i.name).join(", ")} — please set a valid price for {invalidPriceItems.length > 1 ? "these items" : "this item"} in the cart before confirming.
+              </div>
+            )}
+
             {/* Customer Section */}
             <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm space-y-3 relative overflow-hidden">
               <div className="absolute top-0 right-0 p-3 opacity-5"><User className="h-20 w-20"/></div>
@@ -975,7 +1026,8 @@ export default function POSPage() {
             <Button
               className="bg-emerald-600 hover:bg-emerald-700 h-12 px-8 font-black shadow-lg hover:shadow-xl transition-all gap-2 text-base"
               onClick={handleCheckout}
-              disabled={isSaving || cart.length === 0}
+              disabled={isSaving || cart.length === 0 || hasInvalidPriceItems}
+              title={hasInvalidPriceItems ? "Fix item prices in the cart first" : undefined}
             >
               {isSaving
                 ? <><Loader2 className="h-5 w-5 animate-spin" /> Verifying Cloud...</>
@@ -1037,7 +1089,7 @@ export default function POSPage() {
           )}
         </DialogContent>
       </Dialog>
-      
+
       <style dangerouslySetInnerHTML={{__html: `
         .custom-scrollbar::-webkit-scrollbar { width: 6px; }
         .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
